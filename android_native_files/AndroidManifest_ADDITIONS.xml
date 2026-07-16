@@ -1,0 +1,62 @@
+<!--
+    Ye poora AndroidManifest.xml NAHI hai -- ye sirf wo <uses-permission> aur
+    <application> ke andar wale tags hain jo aapko apni
+    android/app/src/main/AndroidManifest.xml me MANUALLY add karne hain.
+
+    `flutter create theme_studio` chalane ke baad jo AndroidManifest.xml
+    generate hoga, uske existing tags ke sath in cheezon ko MERGE karein,
+    poori file overwrite mat karein.
+-->
+
+<!-- ============ PERMISSIONS (manifest tag ke andar, <application> se pehle) ============ -->
+
+<uses-permission android:name="android.permission.SET_WALLPAPER" />
+<uses-permission android:name="android.permission.SET_WALLPAPER_HINTS" />
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+<!-- ^ Control Center overlay ke liye zaroori hai -->
+
+<!-- ============ APPLICATION TAG KE ANDAR ADD KAREIN ============ -->
+
+<!-- 1. Accessibility Service (Control Center) -->
+<service
+    android:name=".ControlCenterAccessibilityService"
+    android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+    </intent-filter>
+    <meta-data
+        android:name="android.accessibilityservice"
+        android:resource="@xml/accessibility_service_config" />
+</service>
+
+<!-- 2. Battery Widget Provider -->
+<receiver
+    android:name=".BatteryWidgetProvider"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+    </intent-filter>
+    <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/battery_widget_info" />
+</receiver>
+
+<!-- 3. Clock Widget Provider -->
+<receiver
+    android:name=".ClockWidgetProvider"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+    </intent-filter>
+    <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/clock_widget_info" />
+</receiver>
+
+<!--
+    NOTE: ShortcutManager aur WallpaperManager ke liye koi extra <service>
+    ya <receiver> nahi chahiye -- wo seedhe MainActivity.kt ke andar,
+    normal system services ke tor par call hote hain.
+-->

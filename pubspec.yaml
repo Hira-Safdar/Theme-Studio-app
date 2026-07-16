@@ -1,0 +1,32 @@
+name: theme_studio
+description: Non-launcher personalization app - Wallpaper, Icon Changer, Widgets, Control Center
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  image_picker: ^1.1.2        # gallery se custom icon / wallpaper pick karne ke liye
+  path_provider: ^2.1.3       # bitmap ko temp file me save karne ke liye (Kotlin ko path bhejne ke liye)
+  permission_handler: ^11.3.1 # accessibility / storage permission checks
+  shared_preferences: ^2.2.3  # applied theme / icon pack state save karne ke liye
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/wallpapers/nature/
+    - assets/wallpapers/abstract/
+    - assets/wallpapers/dark/
+    - assets/wallpapers/minimal/
+    - assets/icon_packs/cartoon/
+    - assets/icon_packs/flat_colors/
+    - assets/icon_packs/dark_mode/

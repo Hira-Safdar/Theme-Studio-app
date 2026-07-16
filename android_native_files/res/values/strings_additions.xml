@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ye strings apni existing android/app/src/main/res/values/strings.xml
+     me copy-paste kar dein (agar file nahi hai to bana lein). -->
+<resources>
+    <string name="accessibility_service_description">
+        Control Center overlay dikhane ke liye. Ye service koi bhi screen
+        content read ya store nahi karti, sirf swipe-down gesture detect
+        karke overlay panel dikhati hai.
+    </string>
+</resources>
