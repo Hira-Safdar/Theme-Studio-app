@@ -4,6 +4,9 @@ import 'screens/wallpaper_screen.dart';
 import 'screens/icon_changer_screen.dart';
 import 'screens/widgets_screen.dart';
 import 'screens/control_center_screen.dart';
+import 'screens/settings_screen.dart';
+import 'theme/app_theme.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   runApp(const ThemeStudioApp());
@@ -15,14 +18,13 @@ class ThemeStudioApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Theme Studio',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF00FFF0),
-      ),
-      home: const RootShell(),
+      theme: AppTheme.themeData,
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const SplashScreen(),
+        '/home': (context) => const RootShell(),
+        '/settings': (context) => const SettingsScreen(),
+      },
     );
   }
 }

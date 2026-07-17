@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/theme_model.dart';
 import '../services/theme_controller.dart';
+import '../theme/app_theme.dart';
+import '../widgets/preset_theme_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,49 +27,61 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onChange() => setState(() {});
 
+  PresetCardStatus _statusFor(ThemeModel theme) {
+    final isActive = controller.activeThemeId == theme.id;
+    if (!isActive) return PresetCardStatus.idle;
+    if (controller.isApplying) return PresetCardStatus.applying;
+    if (controller.lastErrors.isNotEmpty) return PresetCardStatus.partial;
+    return PresetCardStatus.applied;
+  }
+
+  Future<void> _handleTap(ThemeModel theme) async {
+    await controller.applyTheme(theme);
+    final errors = controller.lastErrors;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          errors.isEmpty
+              ? '${theme.name} applied'
+              : 'Applied with some steps failed — tap to retry',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Theme Studio')),
+      appBar: AppBar(
+        title: const Text('Theme studio'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.of(context).pushNamed('/settings'),
+          ),
+        ],
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
           const Text(
             'Select a theme — wallpaper and icon pack will be applied together.',
-            style: TextStyle(fontSize: 14, color: Colors.white70),
+            style: AppTypography.bodySecondary,
           ),
-          const SizedBox(height: 16),
-          ...presetThemes.map((theme) => Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor:
-                        Color(int.parse(theme.accentColorHex.replaceFirst('#', '0xFF'))),
-                  ),
-                  title: Text(theme.name),
-                  subtitle: Text('Icon pack: ${theme.iconPackId}'),
-                  trailing: controller.isApplying && controller.activeThemeId == theme.id
-                      ? const SizedBox(
-                          width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : (controller.activeThemeId == theme.id
-                          ? const Icon(Icons.check_circle, color: Colors.greenAccent)
-                          : const Icon(Icons.chevron_right)),
-                  onTap: controller.isApplying
-                      ? null
-                      : () async {
-                          await controller.applyTheme(theme);
-                          final errors = controller.lastErrors;
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(errors.isEmpty
-                                  ? '${theme.name} applied successfully ✅'
-                                  : 'Some steps failed: ${errors.join(', ')}'),
-                            ),
-                          );
-                        },
-                ),
-              )),
+          const SizedBox(height: AppSpacing.sectionGap),
+          ...presetThemes.map(
+            (theme) => PresetThemeCard(
+              theme: theme,
+              status: _statusFor(theme),
+              errorSummary:
+                  controller.activeThemeId == theme.id && controller.lastErrors.isNotEmpty
+                      ? controller.lastErrors.join(', ')
+                      : null,
+              onTap: controller.isApplying ? null : () => _handleTap(theme),
+            ),
+          ),
         ],
       ),
     );

@@ -96,4 +96,14 @@ class IconPackService {
     );
     return file.path;
   }
+
+  /// Native se aaye raw PNG bytes (e.g. "Auto" tab ka generated duotone
+  /// icon) ko ek real file me save karta hai -- preview aur shortcut
+  /// creation dono isi file path se kaam karte hain.
+  Future<String> bytesToFile(Uint8List bytes, String cacheKey) async {
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/icon_cache_$cacheKey.png');
+    await file.writeAsBytes(bytes);
+    return file.path;
+  }
 }

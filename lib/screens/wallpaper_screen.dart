@@ -1,9 +1,10 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show rootBundle, AssetManifest;
 import 'package:image_picker/image_picker.dart';
 import '../services/native_bridge_service.dart';
 import '../services/icon_pack_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/wallpaper_preview.dart';
 
 /// Category folder names -- yeh humari assets/wallpapers/<category>/
 /// folder structure se match karti hain. Naya category add karna ho to:
@@ -22,7 +23,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
-  /// category -> list of asset paths, e.g. "nature" -> ["assets/wallpapers/nature/1.jpg", ...]
   Map<String, List<String>> _wallpapersByCategory = {};
   bool _loading = true;
   bool _applying = false;
@@ -41,47 +41,75 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   }
 
   Future<void> _loadAssets() async {
-    final manifestContent = await rootBundle.loadString('AssetManifest.json');
-    final Map<String, dynamic> manifestMap = jsonDecode(manifestContent);
-    final allPaths = manifestMap.keys.toList();
+    try {
+      final assetManifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+      final allPaths = assetManifest.listAssets();
 
-    final Map<String, List<String>> grouped = {};
-    for (final category in _categories) {
-      final prefix = 'assets/wallpapers/$category/';
-      final matches = allPaths.where((p) => p.startsWith(prefix)).toList();
-      // Naam ke hisaab se sort taake 1.jpg, 2.jpg, 3.jpg order mein aayein.
-      matches.sort();
-      grouped[category] = matches;
-    }
+      final Map<String, List<String>> grouped = {};
+      for (final category in _categories) {
+        final prefix = 'assets/wallpapers/$category/';
+        final matches = allPaths.where((p) => p.startsWith(prefix)).toList();
+        matches.sort();
+        grouped[category] = matches;
+      }
 
-    if (mounted) {
-      setState(() {
-        _wallpapersByCategory = grouped;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _wallpapersByCategory = grouped;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      // Asset manifest couldn't be read (e.g. missing assets, or a test
+      // environment without a built asset bundle). Fall back to empty
+      // categories — the grid already shows a "No images found" message
+      // per category in that case, instead of crashing the screen.
+      if (mounted) {
+        setState(() {
+          _wallpapersByCategory = {for (final c in _categories) c: <String>[]};
+          _loading = false;
+        });
+      }
     }
   }
 
-  Future<void> _applyFromAsset(String assetPath) async {
+  /// Opens the phone-frame preview first; only calls the native setter if
+  /// the user confirms Apply from that screen. §3.3.
+  Future<void> _previewThenApplyFromAsset(String assetPath) async {
+    final target = await WallpaperPreviewScreen.show(
+      context,
+      wallpaperImageProvider(assetPath: assetPath),
+    );
+    if (target == null || !mounted) return; // user ne cancel kiya
+
     setState(() => _applying = true);
     try {
       final tempPath = await IconPackService.instance.assetToFile(
         assetPath,
         assetPath.hashCode.toString(),
       );
-      final ok = await NativeBridgeService.instance.setWallpaper(tempPath);
+      final ok = await NativeBridgeService.instance
+          .setWallpaper(tempPath, target: target);
       _showResult(ok);
     } finally {
       if (mounted) setState(() => _applying = false);
     }
   }
 
-  Future<void> _applyFromGallery() async {
+  Future<void> _previewThenApplyFromGallery() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
+
+    final target = await WallpaperPreviewScreen.show(
+      context,
+      wallpaperImageProvider(filePath: picked.path),
+    );
+    if (target == null || !mounted) return; // user ne cancel kiya
+
     setState(() => _applying = true);
     try {
-      final ok = await NativeBridgeService.instance.setWallpaper(picked.path);
+      final ok = await NativeBridgeService.instance
+          .setWallpaper(picked.path, target: target);
       _showResult(ok);
     } finally {
       if (mounted) setState(() => _applying = false);
@@ -91,7 +119,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   void _showResult(bool ok) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? 'Wallpaper applied ✅' : 'Failed ❌')),
+      SnackBar(content: Text(ok ? 'Wallpaper applied' : 'Couldn\'t apply — tap to retry')),
     );
   }
 
@@ -110,7 +138,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
         actions: [
           IconButton(
             icon: const Icon(Icons.add_photo_alternate),
-            onPressed: _applying ? null : _applyFromGallery,
+            onPressed: _applying ? null : _previewThenApplyFromGallery,
             tooltip: 'Choose your own wallpaper from gallery',
           ),
         ],
@@ -123,23 +151,27 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                 final wallpapers = _wallpapersByCategory[category] ?? [];
                 if (wallpapers.isEmpty) {
                   return Center(
-                    child: Text('No images found in assets/wallpapers/$category/'),
+                    child: Text(
+                      'No images found in assets/wallpapers/$category/',
+                      style: AppTypography.bodySecondary,
+                    ),
                   );
                 }
                 return GridView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
+                    crossAxisSpacing: AppSpacing.md,
+                    mainAxisSpacing: AppSpacing.md,
+                    childAspectRatio: 2 / 3,
                   ),
                   itemCount: wallpapers.length,
                   itemBuilder: (context, i) {
                     final path = wallpapers[i];
                     return GestureDetector(
-                      onTap: () => _applyFromAsset(path),
+                      onTap: () => _previewThenApplyFromAsset(path),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppRadius.mdRadius,
                         child: Image.asset(path, fit: BoxFit.cover),
                       ),
                     );

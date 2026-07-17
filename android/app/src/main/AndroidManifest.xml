@@ -72,5 +72,13 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+
+        <!-- Android 11+ (API 30) package visibility: iske bagair
+             queryIntentActivities() sirf ek limited/filtered list return
+             karta hai, poori installed-apps list nahi milti. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
     </queries>
 </manifest>

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/native_bridge_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/accessibility_status_card.dart';
+import '../widgets/accessibility_instructions_sheet.dart';
 
 /// Control Center ek overlay hai jo Accessibility Service ke through screen
 /// ke upar draw hota hai. Ye current launcher ko replace NAHI karta -- bas
@@ -38,56 +41,30 @@ class _ControlCenterScreenState extends State<ControlCenterScreen>
     if (mounted) setState(() => _enabled = enabled);
   }
 
+  /// Shows the in-app "here's what to look for" guide first, since we
+  /// can't draw any hint on Android's real settings screen (Android blocks
+  /// overlays there for security — see accessibility_instructions_sheet.dart).
+  /// Only after the user taps "Open Settings" in that guide do we actually
+  /// hand off to Android.
+  void _startTurnOnFlow() {
+    AccessibilityInstructionsSheet.show(
+      context,
+      onOpenSettings: () => NativeBridgeService.instance.openAccessibilitySettings(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Control Center')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  _enabled ? Icons.check_circle : Icons.warning_amber,
-                  color: _enabled ? Colors.greenAccent : Colors.orangeAccent,
-                ),
-                const SizedBox(width: 8),
-                Text(_enabled
-                    ? 'Accessibility Service is ON'
-                    : 'Accessibility Service is OFF'),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Accessibility permission is required to show the Control Center overlay. '
-              'This must be turned on manually, once, in Settings — Android does not '
-              'allow apps to enable this automatically.',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            if (!_enabled)
-              FilledButton.icon(
-                icon: const Icon(Icons.settings),
-                label: const Text('Open Accessibility Settings'),
-                onPressed: () => NativeBridgeService.instance.openAccessibilitySettings(),
-              ),
-            if (_enabled)
-              const Card(
-                color: Colors.white10,
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text(
-                    'You can now swipe down from the top of the screen to test '
-                    'the Control Center overlay (native ControlCenterAccessibilityService.kt '
-                    'detects this gesture).',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ),
-              ),
-          ],
-        ),
+      appBar: AppBar(title: const Text('Control center')),
+      body: ListView(
+        padding: const EdgeInsets.all(AppSpacing.screenPadding),
+        children: [
+          AccessibilityStatusCard(
+            enabled: _enabled,
+            onOpenSettings: _startTurnOnFlow,
+          ),
+        ],
       ),
     );
   }
