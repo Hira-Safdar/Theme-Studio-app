@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Gradient" style, light mode same accent-to-violet recipe as dark,
+     lekin pale/pastel tone taake dark text (secondaryTextColor light) readable rahe. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="16dp" />
+    <gradient
+        android:type="linear"
+        android:angle="315"
+        android:startColor="#FFB8FFF9"
+        android:endColor="#FFDBD6FF" />
+</shape>

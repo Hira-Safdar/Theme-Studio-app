@@ -36,11 +36,42 @@ import java.io.File
 class MainActivity : FlutterActivity() {
 
     private val CHANNEL = "com.example.theme_studio/native"
+    private var methodChannel: MethodChannel? = null
+
+    companion object {
+        /// NotesWidgetProvider (fallback, jab device par koi real notes app
+        /// na mile) isi extra ke saath MainActivity ko launch karta hai.
+        const val EXTRA_OPEN_NOTES_EDITOR = "open_notes_editor"
+    }
+
+    /// Cold start (app band thi, widget tap se pehli dafa khuli) -- Flutter
+    /// side ko seedha "/notes_editor" route par le jaate hain, splash
+    /// screen ke bagair (widget tap ka matlab hi hai seedha note edit karna).
+    override fun getInitialRoute(): String? {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_NOTES_EDITOR, false) == true) {
+            return "/notes_editor"
+        }
+        return super.getInitialRoute()
+    }
+
+    /// Warm start -- app already chal rahi thi (launchMode="singleTop" ki
+    /// wajah se yahin call aata hai, nayi Activity instance nahi banti).
+    /// Flutter engine already ready hai, isliye method channel se seedha
+    /// Dart ko batate hain ke navigate kare.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_NOTES_EDITOR, false)) {
+            methodChannel?.invokeMethod("openNotesEditor", null)
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        methodChannel = channel
+        channel.setMethodCallHandler { call, result ->
             when (call.method) {
 
                 // ---------------- WALLPAPER ----------------
@@ -81,6 +112,31 @@ class MainActivity : FlutterActivity() {
                     result.success(getInstalledLaunchableApps())
                 }
 
+                // ---------------- NOTES WIDGET (in-app fallback editor) ----------------
+                // Ye sirf tab use hota hai jab device par koi real notes app
+                // resolve nahi hota (WidgetClickActions.openNotesEditor ka
+                // last-resort fallback) -- normal case mein Samsung
+                // Notes/Google Keep wagera seedha khulte hain, ye path nahi
+                // chalta.
+                "getNoteText" -> {
+                    val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+                    result.success(prefs.getString("notes_text", null))
+                }
+                "saveNoteText" -> {
+                    val text = call.argument<String>("text") ?: ""
+                    saveNoteTextAndRefreshWidget(text)
+                    result.success(true)
+                }
+                // In-app "Notes" card ke footnote se bhi wahi flow chalana hai
+                // jo pinned widget tap par chalta hai -- pehle device ka real
+                // Notes app (CREATE_NOTE / known OEM packages), warna hamari
+                // apni fallback editor. Isse behavior har jagah consistent
+                // rehta hai (hamesha mobile ka apna Notes app khulta hai).
+                "openNotesApp" -> {
+                    WidgetClickActions.openNotesEditor(this)
+                    result.success(true)
+                }
+
                 // Real app icon leke automatically ek consistent shape +
                 // duotone color treatment apply karta hai -- "Auto" tab ke
                 // liye, jahan har installed app ka khud-ba-khud themed icon
@@ -106,12 +162,36 @@ class MainActivity : FlutterActivity() {
                 "requestPinWidget" -> {
                     val widgetType = call.argument<String>("widgetType") ?: "battery"
                     val style = call.argument<String>("style") ?: "minimal"
-                    result.success(requestPinWidget(widgetType, style))
+                    val mode = call.argument<String>("mode") ?: WidgetStyleHelper.MODE_DARK
+                    result.success(requestPinWidget(widgetType, style, mode))
                 }
                 "updateWidgetStyle" -> {
                     val widgetType = call.argument<String>("widgetType") ?: "battery"
                     val style = call.argument<String>("style") ?: "minimal"
-                    result.success(updateWidgetStyle(widgetType, style))
+                    val mode = call.argument<String>("mode") ?: WidgetStyleHelper.MODE_DARK
+                    result.success(updateWidgetStyle(widgetType, style, mode))
+                }
+                "getPinnedWidgetCounts" -> {
+                    result.success(getPinnedWidgetCounts())
+                }
+
+                // ---------------- WEATHER WIDGET LOCATION ----------------
+                // Flutter side permission_handler se ACCESS_COARSE_LOCATION
+                // maang chuka hota hai is call se pehle -- yahan sirf last-known
+                // location padh kar (Geocoder se) "City, Country" banate hain,
+                // cache karte hain (pinned widget ke liye) aur wapas bhejte hain
+                // (in-app preview turant update karne ke liye).
+                "getWeatherLocation" -> {
+                    result.success(fetchAndCacheWeatherLocation())
+                }
+                "getWeatherSnapshot" -> {
+                    val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+                    result.success(
+                        mapOf(
+                            "temperature" to prefs.getString("weather_temp", null),
+                            "condition" to prefs.getString("weather_condition", null),
+                        )
+                    )
                 }
 
                 else -> result.notImplemented()
@@ -518,6 +598,25 @@ class MainActivity : FlutterActivity() {
         return apps.sortedBy { it["label"]?.lowercase() ?: "" }
     }
 
+    // ============ NOTES WIDGET (in-app fallback editor) ============
+    /// Note text SharedPreferences mein save karta hai aur agar Notes
+    /// widget kahin bhi pinned hai to usse turant refresh (re-render)
+    /// karta hai -- user ko dobara pin karne ki zarurat nahi.
+    private fun saveNoteTextAndRefreshWidget(text: String) {
+        val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString("notes_text", text).apply()
+
+        val manager = AppWidgetManager.getInstance(this)
+        val ids = manager.getAppWidgetIds(ComponentName(this, NotesWidgetProvider::class.java))
+        if (ids.isNotEmpty()) {
+            val updateIntent = Intent(this, NotesWidgetProvider::class.java).apply {
+                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+            }
+            sendBroadcast(updateIntent)
+        }
+    }
+
     // ============ SHORTCUT LOGIC ============
     private fun createCustomIconShortcut(
         packageName: String?,
@@ -582,15 +681,16 @@ class MainActivity : FlutterActivity() {
         else -> null
     }
 
-    private fun requestPinWidget(widgetType: String, style: String): Boolean {
+    private fun requestPinWidget(widgetType: String, style: String, mode: String): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         val appWidgetManager = getSystemService(AppWidgetManager::class.java) ?: return false
         val provider = providerFor(widgetType) ?: return false
 
-        // Style ko PEHLE save kar dete hain -- taake pinning ke baad jab
-        // provider ka onUpdate pehli dafa chale, sahi style already
-        // SharedPreferences mein maujood ho.
+        // Style + mode ko PEHLE save kar dete hain -- taake pinning ke baad
+        // jab provider ka onUpdate pehli dafa chale, sahi values already
+        // SharedPreferences mein maujood hon.
         WidgetStyleHelper.saveStyle(this, widgetType, style)
+        WidgetStyleHelper.saveMode(this, widgetType, mode)
 
         return if (appWidgetManager.isRequestPinAppWidgetSupported) {
             appWidgetManager.requestPinAppWidget(provider, null, null)
@@ -600,13 +700,14 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /// User agar app ke andar style badalta hai (bina naya widget pin
+    /// User agar app ke andar style/mode badalta hai (bina naya widget pin
     /// kiye), to already-pinned instances ko bhi turant re-style karta
     /// hai -- provider ka apna onUpdate() reuse karte hain (broadcast ke
     /// zariye), taake update-logic kahin duplicate na ho.
-    private fun updateWidgetStyle(widgetType: String, style: String): Boolean {
+    private fun updateWidgetStyle(widgetType: String, style: String, mode: String): Boolean {
         val provider = providerFor(widgetType) ?: return false
         WidgetStyleHelper.saveStyle(this, widgetType, style)
+        WidgetStyleHelper.saveMode(this, widgetType, mode)
 
         val appWidgetManager = getSystemService(AppWidgetManager::class.java) ?: return false
         val ids = appWidgetManager.getAppWidgetIds(provider)
@@ -618,5 +719,169 @@ class MainActivity : FlutterActivity() {
         }
         sendBroadcast(intent)
         return true
+    }
+
+    /// Har widget type ke abhi kitne instances Home Screen par pinned hain,
+    /// seedha AppWidgetManager se -- ye system ki apni live state hai
+    /// (koi manual counter maintain nahi karna padta), isliye add/remove
+    /// dono khud-ba-khud sahi reflect hote hain, chahe remove user ne
+    /// Home Screen se directly kiya ho (long-press > Remove).
+    private fun getPinnedWidgetCounts(): Map<String, Int> {
+        val appWidgetManager = getSystemService(AppWidgetManager::class.java) ?: return emptyMap()
+        val types = listOf("battery", "clock", "weather", "calendar", "notes")
+        return types.associateWith { type ->
+            providerFor(type)?.let { appWidgetManager.getAppWidgetIds(it).size } ?: 0
+        }
+    }
+
+    /// Open-Meteo (free, koi API key ya signup nahi chahiye) se real
+    /// current temperature + condition fetch karke SharedPreferences mein
+    /// cache karta hai, phir pinned Weather widgets ko refresh karta hai.
+    /// Yahi cache dono jagah use hoti hai -- pinned widget (native) aur
+    /// in-app preview (Dart ka getWeatherSnapshot). Geocoder ki tarah ye
+    /// bhi thodi der ka blocking network call hai -- existing pattern se
+    /// consistent, aur ek single quick request hone ki wajah se practically
+    /// ANR ka risk nahi.
+    private fun fetchAndCacheCurrentWeather(lat: Double, lon: Double) {
+        try {
+            val url = java.net.URL(
+                "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true"
+            )
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
+
+            if (connection.responseCode != 200) {
+                connection.disconnect()
+                return
+            }
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
+
+            val current = org.json.JSONObject(body).getJSONObject("current_weather")
+            val tempC = current.getDouble("temperature")
+            val code = current.getInt("weathercode")
+
+            val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString("weather_temp", "${Math.round(tempC)}°")
+                .putString("weather_condition", weatherCodeToLabel(code))
+                .apply()
+        } catch (e: Exception) {
+            // Network na ho, API down ho, ya JSON parse fail ho -- cache
+            // jaisi thi waisi rehti hai (ya khaali), UI khud fallback dikhati hai.
+            e.printStackTrace()
+        }
+    }
+
+    /// WMO weather-interpretation codes (Open-Meteo isi standard ko follow
+    /// karta hai) ko chhoti insaan-parh-sake condition string mein badalta hai.
+    private fun weatherCodeToLabel(code: Int): String = when (code) {
+        0 -> "Clear sky"
+        1, 2 -> "Partly cloudy"
+        3 -> "Overcast"
+        45, 48 -> "Foggy"
+        51, 53, 55 -> "Drizzle"
+        56, 57 -> "Freezing drizzle"
+        61, 63, 65 -> "Rain"
+        66, 67 -> "Freezing rain"
+        71, 73, 75, 77 -> "Snow"
+        80, 81, 82 -> "Rain showers"
+        85, 86 -> "Snow showers"
+        95 -> "Thunderstorm"
+        96, 99 -> "Thunderstorm, hail"
+        else -> "Unknown"
+    }
+
+    // ============ WEATHER WIDGET LOCATION ============
+    /// Last-known location (GPS ya NETWORK provider, jo bhi pehle mile)
+    /// leke Geocoder se "City, Country" banata hai, cache karta hai
+    /// (WeatherWidgetProvider isi cache se padhta hai) aur pinned weather
+    /// widgets ko turant refresh bhi karta hai -- taake home-screen widget
+    /// bhi in-app preview jitna hi up-to-date rahe. Permission na di gayi
+    /// ho, location off ho, ya geocoding fail ho -- har case mein null,
+    /// UI khud "location unavailable" handle karti hai.
+    private fun fetchAndCacheWeatherLocation(): String? {
+        // Context.checkSelfPermission() seedha API 23+ ka core-platform
+        // method hai -- koi extra androidx dependency add karne ki
+        // zaroorat nahi.
+        val hasFine = checkSelfPermission(
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasCoarse = checkSelfPermission(
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!hasFine && !hasCoarse) return null
+
+        return try {
+            val locationManager =
+                getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+                    ?: return null
+
+            // GPS_PROVIDER ko PEHLE try karte hain -- zyada precise fix
+            // deta hai (kuch meter tak), NETWORK_PROVIDER sirf fallback hai
+            // (cell tower/Wi-Fi based, 1-3km tak off ho sakta hai). GPS
+            // sirf ACCESS_FINE_LOCATION granted hone par kaam karta hai --
+            // agar sirf coarse mili hai to GPS_PROVIDER call apne aap
+            // SecurityException dega aur neeche ka catch NETWORK_PROVIDER
+            // par fallback kar dega.
+            val providers = listOf(
+                android.location.LocationManager.GPS_PROVIDER,
+                android.location.LocationManager.NETWORK_PROVIDER
+            )
+            var location: android.location.Location? = null
+            for (p in providers) {
+                try {
+                    if (locationManager.isProviderEnabled(p)) {
+                        val last = locationManager.getLastKnownLocation(p)
+                        if (last != null) {
+                            location = last
+                            break
+                        }
+                    }
+                } catch (e: SecurityException) {
+                    // Is provider ke liye permission nahi -- agla try karo.
+                }
+            }
+            if (location == null) return null
+
+            @Suppress("DEPRECATION")
+            val geocoder = android.location.Geocoder(this, java.util.Locale.getDefault())
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+            val address = addresses?.firstOrNull() ?: return null
+
+            val city = address.locality ?: address.subAdminArea ?: address.adminArea
+            val country = address.countryName
+            val label = listOfNotNull(city, country).joinToString(", ")
+            if (label.isBlank()) return null
+
+            val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putString("weather_location", label).apply()
+
+            // Location mil gayi -- isi lat/lon se real current weather bhi
+            // fetch karke cache kar dete hain (widget aur in-app preview
+            // dono isi cache se padhte hain).
+            fetchAndCacheCurrentWeather(location.latitude, location.longitude)
+
+            val appWidgetManager = getSystemService(AppWidgetManager::class.java)
+            val ids = appWidgetManager?.getAppWidgetIds(
+                ComponentName(this, WeatherWidgetProvider::class.java)
+            )
+            if (ids != null && ids.isNotEmpty()) {
+                val updateIntent = Intent(this, WeatherWidgetProvider::class.java).apply {
+                    action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+                }
+                sendBroadcast(updateIntent)
+            }
+
+            label
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 }

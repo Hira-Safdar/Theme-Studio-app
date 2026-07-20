@@ -24,6 +24,15 @@ class BatteryWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == WidgetClickActions.ACTION_WIDGET_CLICK) {
+            val type = intent.getStringExtra(WidgetClickActions.EXTRA_WIDGET_TYPE) ?: return
+            WidgetClickActions.handleClick(context, type)
+            return
+        }
+        super.onReceive(context, intent)
+    }
+
     companion object {
         fun updateBatteryWidget(context: Context, manager: AppWidgetManager, widgetId: Int) {
             val batteryIntent = context.registerReceiver(
@@ -34,11 +43,20 @@ class BatteryWidgetProvider : AppWidgetProvider() {
             val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
             val percentage = if (level >= 0 && scale > 0) (level * 100 / scale) else 0
 
+            val style = WidgetStyleHelper.styleFor(context, "battery")
+            val mode = WidgetStyleHelper.modeFor(context, "battery")
             val views = RemoteViews(context.packageName, R.layout.widget_battery)
-            WidgetStyleHelper.applyBackground(
-                views, R.id.widget_root, WidgetStyleHelper.styleFor(context, "battery")
+            WidgetStyleHelper.applyBackground(views, R.id.widget_root, style, mode)
+            WidgetStyleHelper.applyTextColors(
+                views, mode, primaryIds = listOf(R.id.battery_percentage_text)
             )
             views.setTextViewText(R.id.battery_percentage_text, "$percentage%")
+            views.setOnClickPendingIntent(
+                R.id.widget_root,
+                WidgetClickActions.buildClickPendingIntent(
+                    context, BatteryWidgetProvider::class.java, "battery", widgetId
+                )
+            )
 
             manager.updateAppWidget(widgetId, views)
         }

@@ -25,4 +25,16 @@
         android:text="Loading..."
         android:textColor="#FFFFFF"
         android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/weather_location_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text=""
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:alpha="0.75"
+        android:maxLines="1"
+        android:ellipsize="end" />
 </LinearLayout>

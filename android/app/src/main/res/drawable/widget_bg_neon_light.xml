@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Neon Glass" style, light mode dark version ka glow-ring concept wahi
+     hai, lekin andar ka "glass" card ab light hai (dark glass ki jagah), taake
+     dark text light background par readable rahe, glow ring theme accent hi rakha. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Outer glow sabse halka, sabse bada -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="18dp" />
+            <stroke android:width="8dp" android:color="#2200FFF0" />
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+    <!-- Middle glow ring -->
+    <item
+        android:top="3dp"
+        android:bottom="3dp"
+        android:left="3dp"
+        android:right="3dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="16dp" />
+            <stroke android:width="4dp" android:color="#4400FFF0" />
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+    <!-- Light glass card + accent inner stroke -->
+    <item
+        android:top="6dp"
+        android:bottom="6dp"
+        android:left="6dp"
+        android:right="6dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="14dp" />
+            <solid android:color="#F2F4FDFC" />
+            <stroke android:width="1.5dp" android:color="#9900B8AE" />
+        </shape>
+    </item>
+</layer-list>

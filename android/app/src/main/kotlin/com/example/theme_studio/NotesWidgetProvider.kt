@@ -17,14 +17,35 @@ class NotesWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         val style = WidgetStyleHelper.styleFor(context, "notes")
-        val prefs = context.getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
-        val noteText = prefs.getString("notes_text", null) ?: "Tap to add a note"
+        val mode = WidgetStyleHelper.modeFor(context, "notes")
+        // Tap par device ka apna (real) Notes app khulta hai -- Android kisi
+        // bhi app ko doosri app ka private data padhne nahi deta, isliye
+        // yahan us app mein saved actual text kabhi preview nahi ho sakta.
+        // Static label hi sahi/honest hai, stale ya hamesha-empty text se
+        // behtar.
+        val noteText = "Tap to open Notes"
 
         for (widgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_notes)
-            WidgetStyleHelper.applyBackground(views, R.id.widget_root, style)
+            WidgetStyleHelper.applyBackground(views, R.id.widget_root, style, mode)
+            WidgetStyleHelper.applyTextColors(views, mode, secondaryIds = listOf(R.id.notes_text))
             views.setTextViewText(R.id.notes_text, noteText)
+            views.setOnClickPendingIntent(
+                R.id.widget_root,
+                WidgetClickActions.buildClickPendingIntent(
+                    context, NotesWidgetProvider::class.java, "notes", widgetId
+                )
+            )
             appWidgetManager.updateAppWidget(widgetId, views)
         }
+    }
+
+    override fun onReceive(context: Context, intent: android.content.Intent) {
+        if (intent.action == WidgetClickActions.ACTION_WIDGET_CLICK) {
+            val type = intent.getStringExtra(WidgetClickActions.EXTRA_WIDGET_TYPE) ?: return
+            WidgetClickActions.handleClick(context, type)
+            return
+        }
+        super.onReceive(context, intent)
     }
 }

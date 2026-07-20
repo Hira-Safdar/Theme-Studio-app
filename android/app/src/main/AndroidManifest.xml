@@ -4,6 +4,11 @@
     <uses-permission android:name="android.permission.SET_WALLPAPER_HINTS" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Weather widget location row ("Gujranwala, Pakistan" jaisi line) ke liye.
+         COARSE hi kaafi hai city-level accuracy chahiye, GPS-precise nahi. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="theme_studio"
@@ -113,5 +118,41 @@
             <action android:name="android.intent.action.MAIN"/>
             <category android:name="android.intent.category.LAUNCHER"/>
         </intent>
+        <!-- Widget tap-actions ke liye external apps (Notes/Calendar/
+             Weather/Alarms) resolve karne ke liye package-visibility
+             chahiye, warna implicit intents silently fail ho jaate hain. -->
+        <intent>
+            <action android:name="android.intent.action.CREATE_NOTE"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="content" android:host="com.android.calendar"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.APP_CALENDAR"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.APP_WEATHER"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.POWER_USAGE_SUMMARY"/>
+        </intent>
+
+        <!-- Known OEM Notes app packages Notes widget tap ke fallback
+             chain ke liye (getLaunchIntentForPackage ko inhe "dekhna"
+             chahiye). -->
+        <package android:name="com.samsung.android.app.notes"/>
+        <package android:name="com.google.android.keep"/>
+        <package android:name="com.miui.notes"/>
+        <package android:name="com.coloros.note"/>
+        <package android:name="com.nearme.note"/>
+        <package android:name="com.oneplus.note"/>
+        <package android:name="com.vivo.notes"/>
+        <package android:name="com.huawei.notepad"/>
     </queries>
 </manifest>

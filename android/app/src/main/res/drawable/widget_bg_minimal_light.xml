@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Minimal" style, light mode  off-white solid card, dark-mode ka
+     seedha counterpart, taake text-color switch ke saath contrast bana rahe. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="16dp" />
+    <solid android:color="#F5F2EFEC" />
+</shape>
