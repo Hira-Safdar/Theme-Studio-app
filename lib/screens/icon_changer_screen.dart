@@ -61,6 +61,13 @@ const List<String> autoShapeOptions = ['circle', 'squircle'];
 
 String _shapeDisplayName(String id) => id == 'circle' ? 'Circle' : 'Squircle';
 
+/// Auto tab ke do design "styles" -- dono same shape+accent controls use
+/// karte hain, sirf background/border treatment alag hota hai (native
+/// side [applyDuotoneTheme] vs [applyNeonGlassTheme]).
+const List<String> autoStyleOptions = ['classic', 'neon'];
+
+String _autoStyleDisplayName(String id) => id == 'neon' ? 'Neon Glass' : 'Classic';
+
 /// Auto tab ke liye accent color presets -- AppColors.moodSwatches "Home
 /// preset" ke liye reserved hain (dekho app_theme.dart), isliye yahan alag
 /// dedicated palette rakhi hai.
@@ -159,9 +166,10 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   final Map<String, String> _customIconPaths = {};
   final Map<String, Uint8List> _oldIconBytes = {};
 
-  // "Auto" tab state -- shape + accent chunte hi saari preview icons
-  // dobara generate hoti hain.
+  // "Auto" tab state -- shape, style, ya accent badalte hi saari preview
+  // icons dobara generate hoti hain.
   String _autoShape = autoShapeOptions.first;
+  String _autoStyle = autoStyleOptions.first;
   Color _autoAccent = autoAccentPresets.first;
   bool _loadingAutoPreviews = false;
   final Map<String, String> _autoPreviewPaths = {};
@@ -239,11 +247,11 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     }
   }
 
-  /// Har app ke liye native se themed (duotone + shape-masked) icon
+  /// Har app ke liye native se themed (duotone/neon + shape-masked) icon
   /// generate karwata hai, aur ek real file me cache karta hai (Image.file
-  /// preview + shortcut creation dono isi file se kaam karte hain). Shape
-  /// ya accent color badalne par dobara call hota hai -- cache-key mein
-  /// dono shamil hain isliye purani generation reuse nahi hoti.
+  /// preview + shortcut creation dono isi file se kaam karte hain). Shape,
+  /// style, ya accent color badalne par dobara call hota hai -- cache-key
+  /// mein teeno shamil hain isliye purani generation reuse nahi hoti.
   Future<void> _loadAutoPreviews() async {
     if (_apps.isEmpty) return;
     setState(() => _loadingAutoPreviews = true);
@@ -254,11 +262,12 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
         packageName: app.packageName,
         shape: _autoShape,
         accentColorHex: accentHex,
+        style: _autoStyle,
       );
       if (bytes == null) return null;
       final path = await IconPackService.instance.bytesToFile(
         bytes,
-        '${app.packageName}_auto_${_autoShape}_$accentHex',
+        '${app.packageName}_auto_${_autoStyle}_${_autoShape}_$accentHex',
       );
       return MapEntry(app.packageName, path);
     }));
@@ -281,6 +290,11 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
 
   void _onAutoShapeChanged(String shape) {
     setState(() => _autoShape = shape);
+    _loadAutoPreviews();
+  }
+
+  void _onAutoStyleChanged(String style) {
+    setState(() => _autoStyle = style);
     _loadAutoPreviews();
   }
 
@@ -426,8 +440,10 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
           ),
           if (_isAutoTab) _AutoControls(
             shape: _autoShape,
+            style: _autoStyle,
             accent: _autoAccent,
             onShapeChanged: _onAutoShapeChanged,
+            onStyleChanged: _onAutoStyleChanged,
             onAccentChanged: _onAutoAccentChanged,
           ),
           Padding(
@@ -501,20 +517,24 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   }
 }
 
-/// "Auto" tab ke liye shape + accent-color controls -- PackSelector
-/// (shape ke liye) + ek chhota accent-swatch row. Jab tak preview
+/// "Auto" tab ke liye shape + style + accent-color controls -- PackSelector
+/// (shape aur style ke liye) + ek chhota accent-swatch row. Jab tak preview
 /// generate ho rahi ho, ek thin progress indicator dikhta hai.
 class _AutoControls extends StatelessWidget {
   const _AutoControls({
     required this.shape,
+    required this.style,
     required this.accent,
     required this.onShapeChanged,
+    required this.onStyleChanged,
     required this.onAccentChanged,
   });
 
   final String shape;
+  final String style;
   final Color accent;
   final ValueChanged<String> onShapeChanged;
+  final ValueChanged<String> onStyleChanged;
   final ValueChanged<Color> onAccentChanged;
 
   @override
@@ -529,6 +549,13 @@ class _AutoControls extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          PackSelector(
+            options: autoStyleOptions,
+            selected: style,
+            onChanged: onStyleChanged,
+            labelBuilder: _autoStyleDisplayName,
+          ),
+          const SizedBox(height: AppSpacing.sm),
           PackSelector(
             options: autoShapeOptions,
             selected: shape,

@@ -9,13 +9,17 @@ import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.Icon
@@ -85,7 +89,8 @@ class MainActivity : FlutterActivity() {
                     val packageName = call.argument<String>("packageName")
                     val shape = call.argument<String>("shape") ?: "circle"
                     val accentColor = call.argument<String>("accentColor")
-                    result.success(getThemedAppIconBytes(packageName, shape, accentColor))
+                    val style = call.argument<String>("style") ?: "classic"
+                    result.success(getThemedAppIconBytes(packageName, shape, accentColor, style))
                 }
 
                 // ---------------- CONTROL CENTER (Accessibility) ----------------
@@ -100,7 +105,13 @@ class MainActivity : FlutterActivity() {
                 // ---------------- WIDGETS ----------------
                 "requestPinWidget" -> {
                     val widgetType = call.argument<String>("widgetType") ?: "battery"
-                    result.success(requestPinWidget(widgetType))
+                    val style = call.argument<String>("style") ?: "minimal"
+                    result.success(requestPinWidget(widgetType, style))
+                }
+                "updateWidgetStyle" -> {
+                    val widgetType = call.argument<String>("widgetType") ?: "battery"
+                    val style = call.argument<String>("style") ?: "minimal"
+                    result.success(updateWidgetStyle(widgetType, style))
                 }
 
                 else -> result.notImplemented()
@@ -173,7 +184,8 @@ class MainActivity : FlutterActivity() {
     private fun getThemedAppIconBytes(
         packageName: String?,
         shape: String,
-        accentColorHex: String?
+        accentColorHex: String?,
+        style: String
     ): ByteArray? {
         if (packageName == null) return null
         return try {
@@ -184,7 +196,11 @@ class MainActivity : FlutterActivity() {
             } catch (e: Exception) {
                 Color.parseColor("#00FFF0")
             }
-            val themed = applyDuotoneTheme(source, shape, accent)
+            val themed = if (style == "neon") {
+                applyNeonGlassTheme(source, shape, accent)
+            } else {
+                applyDuotoneTheme(source, shape, accent)
+            }
             val stream = ByteArrayOutputStream()
             themed.compress(Bitmap.CompressFormat.PNG, 100, stream)
             stream.toByteArray()
@@ -195,30 +211,60 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /// [source] = asal app icon. Steps: (1) canvas ko chosen shape (circle
-    /// ya squircle) tak clip karo, (2) accent color ka darker shade se
-    /// backplate bharo, (3) source icon ko grayscale karke accent-tint karo
-    /// (duotone) aur center mein thoda inset karke draw karo.
+    /// [source] = asal app icon. Steps: (1) shadow/elevation, (2) gradient
+    /// backplate, (3) icon ko transparent-padding trim karke consistent
+    /// scale pe normalize karo, phir grayscale+accent-tint (duotone) karke
+    /// draw karo, (4) ring/outline border, (5) corner accent badge. Sab
+    /// icons ek hi "signature" share karte hain chahe asal artwork alag ho.
     private fun applyDuotoneTheme(source: Bitmap, shape: String, accent: Int): Bitmap {
         val size = 192 // fixed output size -- sab themed icons same resolution
+        val margin = size * 0.07f // shadow + ring ke liye jagah chhodte hain
+        val plate = RectF(margin, margin, size - margin, size - margin)
         val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
 
         val path = Path()
         if (shape == "circle") {
-            path.addCircle(size / 2f, size / 2f, size / 2f, Path.Direction.CW)
+            path.addOval(plate, Path.Direction.CW)
         } else {
             // squircle -- generous corner radius, iOS-style rounded square
-            val r = size * 0.32f
-            path.addRoundRect(0f, 0f, size.toFloat(), size.toFloat(), r, r, Path.Direction.CW)
+            val r = plate.width() * 0.34f
+            path.addRoundRect(plate, r, r, Path.Direction.CW)
         }
-        canvas.clipPath(path) // isse aage jo bhi draw hoga, shape ke bahar nahi jayega
 
-        // 1) Backplate -- accent ka darker shade, poori shape bharta hai.
-        val platePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = darkenColor(accent, 0.35f) }
-        canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), platePaint)
+        // 1) Shadow/elevation -- plate shape ka halka blurred saaya, thoda
+        // neeche offset, taake sab icons "floating" jaisi depth paayein.
+        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(90, 0, 0, 0)
+            maskFilter = BlurMaskFilter(size * 0.035f, BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.save()
+        canvas.translate(0f, size * 0.03f)
+        canvas.drawPath(path, shadowPaint)
+        canvas.restore()
 
-        // 2) Grayscale -> accent-tint (duotone) color filter.
+        // 2) Gradient backplate -- accent se uske darker shade tak, diagonal.
+        // Flat color se zyada "designed" lagta hai, har icon isi gradient
+        // recipe ko accent ke hisaab se follow karta hai.
+        val plateGradient = LinearGradient(
+            plate.left, plate.top, plate.right, plate.bottom,
+            accent, darkenColor(accent, 0.45f),
+            Shader.TileMode.CLAMP
+        )
+        val platePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { shader = plateGradient }
+        canvas.drawPath(path, platePaint)
+
+        // 3) Icon -- pehle transparent padding trim karo (consistent scale
+        // normalization: kuch apps ke icons poora square bharte hain, kuch
+        // mein zyada padding hoti hai -- trim karke sab ka visual weight
+        // barabar kar dete hain), phir grayscale+accent-tint (duotone).
+        val trimmed = try {
+            val bounds = computeOpaqueBounds(source)
+            Bitmap.createBitmap(source, bounds.left, bounds.top, bounds.width(), bounds.height())
+        } catch (e: Exception) {
+            source
+        }
+
         val grayscale = ColorMatrix()
         grayscale.setSaturation(0f)
         val tint = ColorMatrix(
@@ -234,13 +280,203 @@ class MainActivity : FlutterActivity() {
             colorFilter = ColorMatrixColorFilter(grayscale)
         }
 
-        // Icon ko backplate se thoda chota (center mein inset karke) draw
-        // karo, taake plate ka border sab icons mein consistent dikhe.
-        val inset = size * 0.16f
-        val iconRect = RectF(inset, inset, size - inset, size - inset)
-        canvas.drawBitmap(source, null, iconRect, iconPaint)
+        canvas.save()
+        canvas.clipPath(path)
+        val iconInset = plate.width() * 0.22f
+        val iconRect = RectF(
+            plate.left + iconInset, plate.top + iconInset,
+            plate.right - iconInset, plate.bottom - iconInset
+        )
+        canvas.drawBitmap(trimmed, null, iconRect, iconPaint)
+        canvas.restore()
+
+        // 4) Ring/outline border -- plate shape ke around ek thin, consistent
+        // stroke, har icon pe same rehta hai.
+        val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = size * 0.02f
+            color = Color.argb(200, 255, 255, 255)
+        }
+        canvas.drawPath(path, ringPaint)
+
+        // 5) Corner accent badge -- bottom-right corner par ek chhota dot,
+        // pack ki "signature" jaisa, har icon pe identical.
+        val badgeRadius = size * 0.075f
+        val badgeCenterX = plate.right - badgeRadius * 0.3f
+        val badgeCenterY = plate.bottom - badgeRadius * 0.3f
+        val badgeRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        canvas.drawCircle(badgeCenterX, badgeCenterY, badgeRadius + size * 0.012f, badgeRingPaint)
+        val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accent }
+        canvas.drawCircle(badgeCenterX, badgeCenterY, badgeRadius, badgePaint)
 
         return output
+    }
+
+    /// "Neon Glass" style -- [source] = asal app icon. Elements: outer neon
+    /// glow, two-tone diagonal split background, frosted-glass overlay,
+    /// dot-grid micro-texture, glossy top-shine, aur gradient ring border.
+    /// Icon khud wahi grayscale+accent-tint (duotone) treatment leta hai
+    /// jo Classic style mein hai, taake dono styles ek hi color-identity
+    /// share karein, sirf background/border ka treatment alag ho.
+    private fun applyNeonGlassTheme(source: Bitmap, shape: String, accent: Int): Bitmap {
+        val size = 192
+        val margin = size * 0.10f // neon glow ke liye extra jagah
+        val plate = RectF(margin, margin, size - margin, size - margin)
+        val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+
+        val path = Path()
+        if (shape == "circle") {
+            path.addOval(plate, Path.Direction.CW)
+        } else {
+            val r = plate.width() * 0.34f
+            path.addRoundRect(plate, r, r, Path.Direction.CW)
+        }
+
+        val secondary = shiftHue(accent, 40f) // two-tone split ke liye complement
+
+        // 1) Outer glow (neon) -- BlurMaskFilter.Blur.OUTER sirf shape ke
+        // BAHAR blur karta hai, andar transparent rehta hai. Plate se
+        // pehle draw karte hain taake glow neeche/bahar dikhe.
+        val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = accent
+            maskFilter = BlurMaskFilter(size * 0.05f, BlurMaskFilter.Blur.OUTER)
+        }
+        canvas.drawPath(path, glowPaint)
+
+        canvas.save()
+        canvas.clipPath(path)
+
+        // 2) Two-tone diagonal split background.
+        val splitPaintA = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accent }
+        canvas.drawRect(plate, splitPaintA)
+        val splitPaintB = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = secondary }
+        val diagonal = Path().apply {
+            moveTo(plate.left, plate.bottom)
+            lineTo(plate.right, plate.bottom)
+            lineTo(plate.right, plate.top)
+            close()
+        }
+        canvas.drawPath(diagonal, splitPaintB)
+
+        // 3) Frosted glass overlay -- halka milky/semi-transparent layer.
+        val glassPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(55, 255, 255, 255)
+        }
+        canvas.drawRect(plate, glassPaint)
+
+        // 4) Dot-grid micro-texture -- subtle material-jaisa feel.
+        val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(45, 255, 255, 255)
+        }
+        val step = size * 0.09f
+        var gy = plate.top + step / 2
+        while (gy < plate.bottom) {
+            var gx = plate.left + step / 2
+            while (gx < plate.right) {
+                canvas.drawCircle(gx, gy, size * 0.006f, dotPaint)
+                gx += step
+            }
+            gy += step
+        }
+
+        // 5) Inner glow / glossy top-shine.
+        val shineRect = RectF(plate.left, plate.top, plate.right, plate.top + plate.height() * 0.55f)
+        val shinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, shineRect.top, 0f, shineRect.bottom,
+                Color.argb(90, 255, 255, 255), Color.argb(0, 255, 255, 255),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawOval(shineRect, shinePaint)
+
+        // 6) Icon -- trim (consistent scale) + grayscale/accent-tint (duotone).
+        val trimmed = try {
+            val bounds = computeOpaqueBounds(source)
+            Bitmap.createBitmap(source, bounds.left, bounds.top, bounds.width(), bounds.height())
+        } catch (e: Exception) {
+            source
+        }
+        val grayscale = ColorMatrix()
+        grayscale.setSaturation(0f)
+        val tint = ColorMatrix(
+            floatArrayOf(
+                Color.red(accent) / 255f, 0f, 0f, 0f, 0f,
+                0f, Color.green(accent) / 255f, 0f, 0f, 0f,
+                0f, 0f, Color.blue(accent) / 255f, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f
+            )
+        )
+        grayscale.postConcat(tint)
+        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            colorFilter = ColorMatrixColorFilter(grayscale)
+        }
+        val iconInset = plate.width() * 0.22f
+        val iconRect = RectF(
+            plate.left + iconInset, plate.top + iconInset,
+            plate.right - iconInset, plate.bottom - iconInset
+        )
+        canvas.drawBitmap(trimmed, null, iconRect, iconPaint)
+
+        canvas.restore()
+
+        // 7) Gradient ring border -- solid stroke ki jagah accent->white.
+        val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = size * 0.02f
+            shader = LinearGradient(
+                plate.left, plate.top, plate.right, plate.bottom,
+                accent, Color.WHITE,
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawPath(path, ringPaint)
+
+        return output
+    }
+
+    /// Accent color ka hue thoda shift karke ek complementary secondary
+    /// color deta hai -- two-tone split background ke doosre rang ke liye.
+    private fun shiftHue(color: Int, degrees: Float): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(color, hsv)
+        hsv[0] = (hsv[0] + degrees) % 360f
+        return Color.HSVToColor(hsv)
+    }
+
+    /// Source bitmap ke non-transparent pixels ki bounding box dhoondta hai
+    /// -- alag-alag app icons mein built-in padding alag hoti hai, is trim
+    /// ke bagair "consistent inset/scale" possible nahi (kuch icons chhote
+    /// aur kuch bade dikhte). Alpha > 10 wale pixels hi "content" maane
+    /// jaate hain (halke anti-aliased edges ignore ho jaate hain).
+    private fun computeOpaqueBounds(bitmap: Bitmap): Rect {
+        val w = bitmap.width
+        val h = bitmap.height
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+
+        var left = w
+        var top = h
+        var right = 0
+        var bottom = 0
+        for (y in 0 until h) {
+            val rowOffset = y * w
+            for (x in 0 until w) {
+                val alpha = (pixels[rowOffset + x] ushr 24) and 0xFF
+                if (alpha > 10) {
+                    if (x < left) left = x
+                    if (x > right) right = x
+                    if (y < top) top = y
+                    if (y > bottom) bottom = y
+                }
+            }
+        }
+        return if (right < left || bottom < top) {
+            Rect(0, 0, w, h) // fully-transparent edge case -- poora bitmap use karo
+        } else {
+            Rect(left, top, right + 1, bottom + 1)
+        }
     }
 
     private fun darkenColor(color: Int, amount: Float): Int {
@@ -337,16 +573,24 @@ class MainActivity : FlutterActivity() {
     }
 
     // ============ WIDGET PIN REQUEST ============
-    private fun requestPinWidget(widgetType: String): Boolean {
+    private fun providerFor(widgetType: String): ComponentName? = when (widgetType) {
+        "battery" -> ComponentName(this, BatteryWidgetProvider::class.java)
+        "clock" -> ComponentName(this, ClockWidgetProvider::class.java)
+        "weather" -> ComponentName(this, WeatherWidgetProvider::class.java)
+        "calendar" -> ComponentName(this, CalendarWidgetProvider::class.java)
+        "notes" -> ComponentName(this, NotesWidgetProvider::class.java)
+        else -> null
+    }
+
+    private fun requestPinWidget(widgetType: String, style: String): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         val appWidgetManager = getSystemService(AppWidgetManager::class.java) ?: return false
+        val provider = providerFor(widgetType) ?: return false
 
-        // widgetType ke hisaab se sahi Provider class select karo.
-        val provider = when (widgetType) {
-            "battery" -> ComponentName(this, BatteryWidgetProvider::class.java)
-            "clock" -> ComponentName(this, ClockWidgetProvider::class.java)
-            else -> return false
-        }
+        // Style ko PEHLE save kar dete hain -- taake pinning ke baad jab
+        // provider ka onUpdate pehli dafa chale, sahi style already
+        // SharedPreferences mein maujood ho.
+        WidgetStyleHelper.saveStyle(this, widgetType, style)
 
         return if (appWidgetManager.isRequestPinAppWidgetSupported) {
             appWidgetManager.requestPinAppWidget(provider, null, null)
@@ -354,5 +598,25 @@ class MainActivity : FlutterActivity() {
         } else {
             false
         }
+    }
+
+    /// User agar app ke andar style badalta hai (bina naya widget pin
+    /// kiye), to already-pinned instances ko bhi turant re-style karta
+    /// hai -- provider ka apna onUpdate() reuse karte hain (broadcast ke
+    /// zariye), taake update-logic kahin duplicate na ho.
+    private fun updateWidgetStyle(widgetType: String, style: String): Boolean {
+        val provider = providerFor(widgetType) ?: return false
+        WidgetStyleHelper.saveStyle(this, widgetType, style)
+
+        val appWidgetManager = getSystemService(AppWidgetManager::class.java) ?: return false
+        val ids = appWidgetManager.getAppWidgetIds(provider)
+        if (ids.isEmpty()) return true // koi pinned instance nahi -- agli baar pin hone par apply hogi
+
+        val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
+            component = provider
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+        }
+        sendBroadcast(intent)
+        return true
     }
 }

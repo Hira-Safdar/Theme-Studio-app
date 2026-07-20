@@ -35,6 +35,9 @@ class BatteryWidgetProvider : AppWidgetProvider() {
             val percentage = if (level >= 0 && scale > 0) (level * 100 / scale) else 0
 
             val views = RemoteViews(context.packageName, R.layout.widget_battery)
+            WidgetStyleHelper.applyBackground(
+                views, R.id.widget_root, WidgetStyleHelper.styleFor(context, "battery")
+            )
             views.setTextViewText(R.id.battery_percentage_text, "$percentage%")
 
             manager.updateAppWidget(widgetId, views)

@@ -6,14 +6,15 @@
     android:background="@drawable/widget_bg_minimal"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="8dp">
+    android:padding="10dp">
 
     <TextView
-        android:id="@+id/clock_text"
+        android:id="@+id/notes_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="--:--"
-        android:textColor="#00FFF0"
-        android:textSize="22sp"
-        android:textStyle="bold" />
+        android:text="Tap to add a note"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:maxLines="3"
+        android:gravity="center" />
 </LinearLayout>

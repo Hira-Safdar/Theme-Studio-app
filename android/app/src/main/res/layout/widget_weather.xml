@@ -9,11 +9,20 @@
     android:padding="8dp">
 
     <TextView
-        android:id="@+id/clock_text"
+        android:id="@+id/weather_temp_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="--:--"
+        android:text="--°"
         android:textColor="#00FFF0"
         android:textSize="22sp"
         android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/weather_condition_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Loading..."
+        android:textColor="#FFFFFF"
+        android:textSize="12sp" />
 </LinearLayout>

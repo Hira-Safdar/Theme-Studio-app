@@ -118,14 +118,15 @@ class NativeBridgeService {
   }
 
   /// "Auto" tab ke liye -- kisi bhi installed app ka real icon leke,
-  /// native side par consistent [shape] ("circle"/"squircle") + duotone
-  /// [accentColorHex] (e.g. "#00FFF0") treatment apply karke wapas
-  /// bhejta hai. Har app automatically apna unique-but-themed icon
-  /// paata hai, koi manual PNG ke bagair.
+  /// native side par consistent [shape] ("circle"/"squircle"), [style]
+  /// ("classic"/"neon") aur duotone [accentColorHex] (e.g. "#00FFF0")
+  /// treatment apply karke wapas bhejta hai. Har app automatically apna
+  /// unique-but-themed icon paata hai, koi manual PNG ke bagair.
   Future<Uint8List?> getThemedAppIcon({
     required String packageName,
     required String shape,
     required String accentColorHex,
+    String style = 'classic',
   }) async {
     if (!Platform.isAndroid) return null;
     try {
@@ -133,6 +134,7 @@ class NativeBridgeService {
         'packageName': packageName,
         'shape': shape,
         'accentColor': accentColorHex,
+        'style': style,
       });
       return result;
     } on PlatformException catch (e) {

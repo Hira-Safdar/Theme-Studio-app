@@ -16,6 +16,9 @@ class ClockWidgetProvider : AppWidgetProvider() {
     ) {
         for (widgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_clock)
+            WidgetStyleHelper.applyBackground(
+                views, R.id.widget_root, WidgetStyleHelper.styleFor(context, "clock")
+            )
             val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
             views.setTextViewText(R.id.clock_text, time)
             appWidgetManager.updateAppWidget(widgetId, views)
