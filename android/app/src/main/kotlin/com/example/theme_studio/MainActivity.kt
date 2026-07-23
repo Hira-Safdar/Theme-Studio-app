@@ -2,6 +2,7 @@ package com.example.theme_studio
 
 import android.app.WallpaperManager
 import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -26,6 +27,7 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import android.text.TextUtils
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -127,15 +129,6 @@ class MainActivity : FlutterActivity() {
                     saveNoteTextAndRefreshWidget(text)
                     result.success(true)
                 }
-                // In-app "Notes" card ke footnote se bhi wahi flow chalana hai
-                // jo pinned widget tap par chalta hai -- pehle device ka real
-                // Notes app (CREATE_NOTE / known OEM packages), warna hamari
-                // apni fallback editor. Isse behavior har jagah consistent
-                // rehta hai (hamesha mobile ka apna Notes app khulta hai).
-                "openNotesApp" -> {
-                    WidgetClickActions.openNotesEditor(this)
-                    result.success(true)
-                }
 
                 // Real app icon leke automatically ek consistent shape +
                 // duotone color treatment apply karta hai -- "Auto" tab ke
@@ -165,6 +158,10 @@ class MainActivity : FlutterActivity() {
                     val mode = call.argument<String>("mode") ?: WidgetStyleHelper.MODE_DARK
                     result.success(requestPinWidget(widgetType, style, mode))
                 }
+                "requestPinExternalWidget" -> {
+                    val widgetType = call.argument<String>("widgetType") ?: "notes"
+                    result.success(requestPinExternalWidget(widgetType))
+                }
                 "updateWidgetStyle" -> {
                     val widgetType = call.argument<String>("widgetType") ?: "battery"
                     val style = call.argument<String>("style") ?: "minimal"
@@ -181,8 +178,24 @@ class MainActivity : FlutterActivity() {
                 // location padh kar (Geocoder se) "City, Country" banate hain,
                 // cache karte hain (pinned widget ke liye) aur wapas bhejte hain
                 // (in-app preview turant update karne ke liye).
+                //
+                // IMPORTANT: fetchAndCacheWeatherLocation() ke andar Geocoder
+                // (blocking) aur ek real HTTP call hai -- MethodChannel
+                // handlers by default MAIN/UI thread par chalte hain, isliye
+                // seedha yahan call karna NetworkOnMainThreadException deta
+                // tha aur (jab tak exception/timeout resolve na ho) UI ko
+                // freeze kar deta tha. Frozen UI ke dauraan agar user "Pin
+                // Weather Widget" tap kare to wo tap process hi nahi hota --
+                // isi wajah se widget "add nahi ho raha" jaisa mehsoos hota
+                // tha. Fix: poora kaam background Thread par, result sirf
+                // wapas UI thread par (runOnUiThread) deliver karte hain --
+                // MethodChannel.Result async completion support karta hai,
+                // isliye ye bilkul valid/supported pattern hai.
                 "getWeatherLocation" -> {
-                    result.success(fetchAndCacheWeatherLocation())
+                    Thread {
+                        val location = fetchAndCacheWeatherLocation()
+                        runOnUiThread { result.success(location) }
+                    }.start()
                 }
                 "getWeatherSnapshot" -> {
                     val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
@@ -671,6 +684,184 @@ class MainActivity : FlutterActivity() {
         return false
     }
 
+    /// Notes/Weather ke liye known package names -- Notes ke liye
+    /// WidgetClickActions.knownNotesPackages jaisi hi list (yahan alag se
+    /// rakhi hai kyunke ye object function hai, class-level property
+    /// nahi -- lekin dono lists ko sync mein rakhna, agar ek update ho to
+    /// dusri bhi update karo).
+    private val knownNotesPackages = listOf(
+        "com.samsung.android.app.notes",
+        "com.google.android.keep",
+        "com.miui.notes",
+        "com.coloros.note",
+        "com.nearme.note",
+        "com.oneplus.note",
+        "com.vivo.notes",
+        "com.huawei.notepad",
+    )
+
+    /// NOTE: exact package names OEM/region ke hisaab se badal sakte hain
+    /// -- ye best-effort curated list hai. Agar test devices (Samsung
+    /// SM-G985F, Infinix X688B) par match na ho, `adb shell pm list
+    /// packages | grep -i weather` chala kar sahi package name confirm
+    /// karke yahan add/replace kar dena.
+    private val knownWeatherPackages = listOf(
+        "com.miui.weather2",       // Xiaomi/MIUI Weather
+        "com.samsung.android.app.weather", // Samsung Weather (varies by version)
+        "com.coloros.weather.service",     // Oppo/Realme (ColorOS) Weather
+        "com.vivo.weather",        // Vivo Weather
+        "com.oneplus.weather",     // OnePlus Weather
+        "com.htc.weather",         // HTC Weather
+        "com.google.android.apps.weather", // Google Weather (kuch devices par)
+    )
+
+    /// [packageNames] mein se pehli app jo koi bhi home-screen widget
+    /// provide karti hai, uska pehla `AppWidgetProviderInfo` deta hai.
+    /// `getInstalledProvidersForPackage` API 26+ hai -- isse humein us
+    /// app ke "widgets" ki list milti hai bilkul waisi jaisi Android ka
+    /// apna widget-picker dikhata hai.
+    private fun findExternalWidgetProvider(packageNames: List<String>): AppWidgetProviderInfo? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        val appWidgetManager = getSystemService(AppWidgetManager::class.java) ?: return null
+        for (pkg in packageNames) {
+            try {
+                val providers = appWidgetManager.getInstalledProvidersForPackage(pkg, null)
+                if (providers.isNotEmpty()) return providers.first()
+            } catch (e: Exception) {
+                // Package installed nahi, ya widget provider query fail --
+                // agli candidate package try karo.
+            }
+        }
+        return null
+    }
+
+    /// Fallback jab curated package-name list match na kare (jaise Infinix
+    /// aur kai dusre Transsion/lesser-known OEM builds par, jinke Notes/
+    /// Weather apps ka package name humari guessed list mein nahi hota).
+    /// Curated list ki jagah ab poore device ke SAB installed widget
+    /// providers scan karte hain, aur jis provider/app ka LABEL [keywords]
+    /// se match kare wahi return karte hain -- app label (jo screen par
+    /// dikhta hai) OEM se OEM tak package-name jitna vary nahi karta,
+    /// isliye ye zyada reliable hai.
+    // Package prefixes that should never be treated as a Notes/Weather
+    // match even if a label happens to contain a keyword substring — this
+    // is what let "memo" wrongly match Google Photos' "Memories" widget
+    // (memo⊂memories). Belt-and-suspenders alongside the whole-word fix
+    // below, in case a future keyword has the same kind of collision.
+    private val externalWidgetDenylist = listOf(
+        "com.google.android.apps.photos",
+        "com.google.android.gallery3d",
+        "com.google.android.youtube",
+        "com.google.android.gm",
+        "com.google.android.apps.maps",
+        "com.google.android.music",
+        "com.google.android.videos",
+    )
+
+    /// Raw `.contains()` matches ANY substring, anywhere in the word —
+    /// which is how "memo" (a Notes keyword) wrongly matched "Memories"
+    /// (Google Photos' widget name): memo⊂memories. This instead requires
+    /// a whole-word match, allowing short suffixes (≤2 chars, e.g. the
+    /// "s" in "weather"→"weathers") so legitimate plural app names still
+    /// match, while still rejecting "memo"→"memories" (a 4-char suffix).
+    private fun labelMatchesKeyword(text: String, keywords: List<String>): Boolean {
+        val words = text.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+        return keywords.any { kw ->
+            words.any { word -> word == kw || (word.startsWith(kw) && word.length - kw.length <= 2) }
+        }
+    }
+
+    private fun findExternalWidgetProviderByKeyword(keywords: List<String>): AppWidgetProviderInfo? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        val appWidgetManager = getSystemService(AppWidgetManager::class.java) ?: return null
+        val allProviders = try {
+            appWidgetManager.installedProviders
+        } catch (e: Exception) {
+            return null
+        }
+
+        for (provider in allProviders) {
+            val pkg = provider.provider.packageName
+            if (pkg == packageName) continue // apni khud ki app (Battery/Clock/etc providers) skip
+            if (externalWidgetDenylist.any { pkg.startsWith(it) }) continue
+
+            val providerLabel = try {
+                provider.loadLabel(packageManager)
+            } catch (e: Exception) {
+                ""
+            }
+            val appLabel = try {
+                packageManager.getApplicationLabel(
+                    packageManager.getApplicationInfo(pkg, 0)
+                ).toString()
+            } catch (e: Exception) {
+                ""
+            }
+
+            val matches = labelMatchesKeyword(providerLabel, keywords) ||
+                labelMatchesKeyword(appLabel, keywords) ||
+                labelMatchesKeyword(pkg.substringAfterLast('.'), keywords)
+            if (matches) {
+                Log.d("ThemeStudio", "findExternalWidgetProviderByKeyword: matched pkg=$pkg providerLabel='$providerLabel' appLabel='$appLabel'")
+                return provider
+            }
+        }
+        return null
+    }
+
+    /// Theme Studio ka apna custom widget pin karne ke bajaye, device par
+    /// jo bhi real Notes/Weather app installed hai, USI ka asal widget
+    /// Home Screen par pin karta hai. Agar koi bhi candidate app na mile,
+    /// ya us app ka koi widget hi na ho, false return karta hai -- Dart
+    /// side isko dekh kar hamare apne custom widget par fallback karta hai
+    /// (taake user khaali-haath na rahe).
+    private fun requestPinExternalWidget(widgetType: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Log.d("ThemeStudio", "requestPinExternalWidget($widgetType): SDK < 26, unsupported")
+            return false
+        }
+        val candidates = when (widgetType) {
+            "notes" -> knownNotesPackages
+            "weather" -> knownWeatherPackages
+            else -> return false
+        }
+        val keywords = when (widgetType) {
+            "notes" -> listOf("note", "keep", "memo")
+            "weather" -> listOf("weather", "climate")
+            else -> return false
+        }
+
+        // Pehle fast-path: curated package-name list. Match na ho (jaise
+        // Infinix par) to poore device ke widgets keyword se scan karo.
+        val provider = findExternalWidgetProvider(candidates)
+            ?: findExternalWidgetProviderByKeyword(keywords)
+        if (provider == null) {
+            Log.d("ThemeStudio", "requestPinExternalWidget($widgetType): no candidate provider found on device")
+            return false
+        }
+        Log.d("ThemeStudio", "requestPinExternalWidget($widgetType): found provider ${provider.provider}")
+
+        val appWidgetManager = getSystemService(AppWidgetManager::class.java) ?: return false
+
+        return if (appWidgetManager.isRequestPinAppWidgetSupported) {
+            try {
+                appWidgetManager.requestPinAppWidget(provider.provider, null, null)
+                Log.d("ThemeStudio", "requestPinExternalWidget($widgetType): requestPinAppWidget call succeeded")
+                true
+            } catch (e: Exception) {
+                // Some OEM launchers (Infinix/XOS and others) reject pin
+                // requests for widgets that belong to a DIFFERENT app —
+                // throwing here instead of just returning false, which
+                // used to prevent the clean fallback to our own widget.
+                Log.d("ThemeStudio", "requestPinExternalWidget($widgetType): threw ${e::class.simpleName}: ${e.message}")
+                false
+            }
+        } else {
+            Log.d("ThemeStudio", "requestPinExternalWidget($widgetType): isRequestPinAppWidgetSupported = false")
+            false
+        }
+    }
+
     // ============ WIDGET PIN REQUEST ============
     private fun providerFor(widgetType: String): ComponentName? = when (widgetType) {
         "battery" -> ComponentName(this, BatteryWidgetProvider::class.java)
@@ -682,7 +873,10 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun requestPinWidget(widgetType: String, style: String, mode: String): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Log.d("ThemeStudio", "requestPinWidget($widgetType): SDK < 26, unsupported")
+            return false
+        }
         val appWidgetManager = getSystemService(AppWidgetManager::class.java) ?: return false
         val provider = providerFor(widgetType) ?: return false
 
@@ -692,10 +886,19 @@ class MainActivity : FlutterActivity() {
         WidgetStyleHelper.saveStyle(this, widgetType, style)
         WidgetStyleHelper.saveMode(this, widgetType, mode)
 
+        Log.d("ThemeStudio", "requestPinWidget($widgetType): isRequestPinAppWidgetSupported = ${appWidgetManager.isRequestPinAppWidgetSupported}")
+
         return if (appWidgetManager.isRequestPinAppWidgetSupported) {
-            appWidgetManager.requestPinAppWidget(provider, null, null)
-            true
+            try {
+                appWidgetManager.requestPinAppWidget(provider, null, null)
+                Log.d("ThemeStudio", "requestPinWidget($widgetType): requestPinAppWidget call succeeded")
+                true
+            } catch (e: Exception) {
+                Log.d("ThemeStudio", "requestPinWidget($widgetType): threw ${e::class.simpleName}: ${e.message}")
+                false
+            }
         } else {
+            Log.d("ThemeStudio", "requestPinWidget($widgetType): isRequestPinAppWidgetSupported = false")
             false
         }
     }

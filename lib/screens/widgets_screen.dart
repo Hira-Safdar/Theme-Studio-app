@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../theme/app_theme.dart';
 import '../widgets/pack_selector.dart';
 import '../services/native_bridge_service.dart';
+import 'notes_editor_screen.dart';
 
 /// IMPORTANT: Flutter khud "Home Screen widget" nahi bana sakta.
 /// Home Screen widgets 100% native Android cheez hain (AppWidgetProvider),
@@ -74,6 +75,10 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
   String? _weatherTemp;
   String? _weatherCondition;
 
+  // Notes: reflects whatever is actually saved (from the in-app editor or
+  // the native fallback flow), not a static placeholder.
+  String? _noteText;
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +88,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
     _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
+    _refreshNoteText();
     _initWeatherLocation();
     _refreshPinnedCounts();
   }
@@ -96,11 +102,11 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // User Settings ya Home Screen (widget pin/remove) se wapas is screen
-    // par aaye to counts + weather refresh kar dete hain -- taake stale
-    // na dikhayein. Notes ka apna "saved text" track nahi karte -- wo
-    // device ke real Notes app mein hai, jise Theme Studio padh nahi sakti.
+    // User Settings, Notes editor, ya Home Screen (widget pin/remove) se
+    // wapas is screen par aaye to sab kuch refresh kar dete hain -- taake
+    // preview + counts hamesha asal saved state dikhayein, stale nahi.
     if (state == AppLifecycleState.resumed) {
+      _refreshNoteText();
       _refreshPinnedCounts();
       _refreshWeatherSnapshot();
     }
@@ -136,13 +142,17 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
     );
   }
 
-  /// Pehle device ke real Notes app (ya jo bhi OEM Notes app resolve ho)
-  /// kholne ki koshish karta hai -- pinned widget tap wala hi flow, taake
-  /// in-app card se bhi hamesha "apna mobile ka Notes app" khule. Koi
-  /// notes app na mile to native side khud hamari fallback editor
-  /// (NotesEditorScreen) khol deta hai.
+  Future<void> _refreshNoteText() async {
+    final text = await NativeBridgeService.instance.getNoteText();
+    if (!mounted) return;
+    setState(() => _noteText = text);
+  }
+
   Future<void> _openNoteEditor() async {
-    await NativeBridgeService.instance.openNotesApp();
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NotesEditorScreen()),
+    );
+    _refreshNoteText();
   }
 
   Future<void> _initWeatherLocation() async {
@@ -174,6 +184,48 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
       _weatherTemp = snapshot['temperature'];
       _weatherCondition = snapshot['condition'];
     });
+  }
+
+  /// Notes/Weather ke liye -- Theme Studio ka apna custom widget pin karne
+  /// ke bajaye, device par jo bhi real Notes/Weather app installed hai,
+  /// pehle USI ka asal widget pin karne ki koshish karta hai. Agar koi
+  /// candidate app na mile ya us app ka koi widget na ho, hamare apne
+  /// custom widget (_requestPinWidget) par fallback karta hai -- taake
+  /// user kabhi khaali-haath na rahe.
+  Future<void> _requestPinExternalWidget(String widgetType) async {
+    setState(() => _status[widgetType] = WidgetPinStatus.requesting);
+
+    try {
+      final ok = await _channel.invokeMethod<bool>('requestPinExternalWidget', {
+        'widgetType': widgetType,
+      });
+
+      if (!mounted) return;
+
+      if (ok == true) {
+        setState(() => _status[widgetType] = WidgetPinStatus.pinned);
+        _refreshPinnedCounts();
+      } else {
+        // Koi real Notes/Weather app (ya uska widget) nahi mila -- hamare
+        // apne widget par fallback, warna user ke paas kuch bhi nahi hoga.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widgetType == 'notes'
+                  ? "Couldn't find a Notes app widget — using Theme Studio's own widget instead"
+                  : "Couldn't find a Weather app widget — using Theme Studio's own widget instead",
+            ),
+          ),
+        );
+        await _requestPinWidget(widgetType);
+      }
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Couldn\'t request the widget — ${e.message ?? 'try again'}')),
+      );
+      await _requestPinWidget(widgetType);
+    }
   }
 
   Future<void> _requestPinWidget(String widgetType) async {
@@ -355,7 +407,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                 ),
                 status: _status['weather']!,
                 pinnedCount: _pinnedCounts['weather'] ?? 0,
-                onTap: () => _requestPinWidget('weather'),
+                onTap: () => _requestPinExternalWidget('weather'),
                 onRemove: () => _showRemoveInstructions('Weather'),
                 footnote: _weatherLocationLoading
                     ? 'Locating…'
@@ -386,24 +438,21 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                 preview: _StyledWidgetPreview(
                   style: _style,
                   mode: _mode,
-                  builder: (textColor, secondaryColor, iconColor) => Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.edit_note, color: iconColor, size: 22),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Tap to open Notes',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.bodySecondary.copyWith(color: secondaryColor),
-                      ),
-                    ],
+                  builder: (textColor, secondaryColor, iconColor) => Text(
+                    (_noteText == null || _noteText!.trim().isEmpty)
+                        ? 'Tap to add a note'
+                        : _noteText!,
+                    textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodySecondary.copyWith(color: secondaryColor),
                   ),
                 ),
                 status: _status['notes']!,
                 pinnedCount: _pinnedCounts['notes'] ?? 0,
-                onTap: () => _requestPinWidget('notes'),
+                onTap: () => _requestPinExternalWidget('notes'),
                 onRemove: () => _showRemoveInstructions('Notes'),
-                footnote: 'Open Notes app',
+                footnote: 'Edit note',
                 footnoteIcon: Icons.edit_outlined,
                 onFootnoteTap: _openNoteEditor,
               ),

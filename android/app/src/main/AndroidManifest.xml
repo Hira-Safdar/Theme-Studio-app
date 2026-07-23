@@ -111,6 +111,14 @@
             <data android:mimeType="text/plain"/>
         </intent>
 
+        <!-- Device ki SAAB installed home-screen widget providers dekhne
+             ke liye (Notes/Weather ka keyword-based dynamic scan) 
+             is entry ke bagair getInstalledProviders() sirf visible-by-
+             default packages hi dikhata, poori scan nahi ho paati. -->
+        <intent>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        </intent>
+
         <!-- Android 11+ (API 30) package visibility: iske bagair
              queryIntentActivities() sirf ek limited/filtered list return
              karta hai, poori installed-apps list nahi milti. -->

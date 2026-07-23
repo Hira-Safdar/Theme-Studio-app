@@ -1,6 +1,10 @@
 package com.example.theme_studio
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.widget.RemoteViews
 
 /// Sab widgets (Battery, Clock, Weather, Calendar, Notes) ke liye ek hi
@@ -82,5 +86,58 @@ object WidgetStyleHelper {
         val secondary = secondaryTextColor(mode)
         primaryIds.forEach { views.setTextColor(it, primary) }
         secondaryIds.forEach { views.setTextColor(it, secondary) }
+    }
+
+    // ---------------- LIVE REFRESH TICKER (Clock + Battery) ----------------
+    // widget_info.xml ka `updatePeriodMillis` OS ki taraf se kam-se-kam
+    // 30 minute par floor hota hai (aur kai OEMs isse aur bhi throttle kar
+    // dete hain) -- Clock ko har minute update chahiye, Battery ko bhi
+    // jald-jald. Isliye khud ka "tick" chain banate hain: ClockWidgetProvider
+    // (jo pehle se ek BroadcastReceiver hai) ko har minute ek custom
+    // broadcast milta hai, dono widgets refresh hote hain, aur agla tick
+    // khud reschedule ho jaata hai -- alag se koi naya Receiver class nahi
+    // banani padi.
+    const val ACTION_WIDGET_TICK = "com.example.theme_studio.ACTION_WIDGET_TICK"
+    private const val TICK_REQUEST_CODE = 9001
+    private const val TICK_INTERVAL_MS = 60_000L // 1 minute
+
+    private fun tickPendingIntent(context: Context): PendingIntent {
+        val intent = Intent(context, ClockWidgetProvider::class.java).apply {
+            action = ACTION_WIDGET_TICK
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            TICK_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    /// Agla tick schedule karta hai. `setAndAllowWhileIdle` (inexact,
+    /// lekin Doze mode mein bhi eventually fire hoti hai) jaan-boojh kar
+    /// use ki hai -- `setExactAndAllowWhileIdle` Android 12+ par
+    /// `SCHEDULE_EXACT_ALARM` special permission maangta hai (jo user ko
+    /// Settings mein manually enable karna padta), jo ek clock widget ke
+    /// "minute ke andar-andar" update ke liye zaroori nahi. Screen-on
+    /// hote hi turant catch-up ho jaata hai.
+    fun scheduleNextTick(context: Context) {
+        val alarmManager =
+            context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val triggerAt = System.currentTimeMillis() + TICK_INTERVAL_MS
+        val pendingIntent = tickPendingIntent(context)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+        } else {
+            alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+        }
+    }
+
+    /// Jab Clock aur Battery dono ke koi pinned instances na rahen, tick
+    /// chain band kar dete hain -- warna widget na hone ke bawajood
+    /// battery drain hoti rahegi.
+    fun cancelTick(context: Context) {
+        val alarmManager =
+            context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        alarmManager.cancel(tickPendingIntent(context))
     }
 }
