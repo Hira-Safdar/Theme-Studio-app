@@ -5,11 +5,6 @@ import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.widget.RemoteViews
 
-/// NOTE: Abhi ek static placeholder text dikhata hai. Real note-taking
-/// (user apna text likh kar save kare, wahi widget par dikhe) ke liye ek
-/// chhota "edit note" flow chahiye hoga (Flutter side se
-/// SharedPreferences["widget_styles"]["notes_text"] mein likhna, yahan se
-/// padhna) -- ye future scope hai, abhi ke liye placeholder kaafi hai.
 class NotesWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(
         context: Context,
@@ -18,12 +13,11 @@ class NotesWidgetProvider : AppWidgetProvider() {
     ) {
         val style = WidgetStyleHelper.styleFor(context, "notes")
         val mode = WidgetStyleHelper.modeFor(context, "notes")
-        // Tap par device ka apna (real) Notes app khulta hai -- Android kisi
-        // bhi app ko doosri app ka private data padhne nahi deta, isliye
-        // yahan us app mein saved actual text kabhi preview nahi ho sakta.
-        // Static label hi sahi/honest hai, stale ya hamesha-empty text se
-        // behtar.
-        val noteText = "Tap to open Notes"
+        // SharedPreferences se user ka saved note text padhte hain --
+        // Flutter side saveNoteText() isi key mein likhta hai.
+        val prefs = context.getSharedPreferences("widget_styles", Context.MODE_PRIVATE)
+        val noteText = prefs.getString("notes_text", null)
+            ?: "Tap to add a note"
 
         for (widgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_notes)

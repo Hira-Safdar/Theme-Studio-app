@@ -7,10 +7,23 @@ import 'package:flutter/services.dart';
 /// wo UI layer (icon_changer_screen.dart) khud label/package se guess
 /// karta hai, kyunke bundled icon packs sirf 10 fixed categories cover
 /// karte hain.
+///
+/// [isSystemApp] -- true agar ye app ROM ka hissa hai (pre-installed).
+/// Emulators par khaas taur par bohat saari dummy/third-party test apps
+/// installed hoti hain jinke naam/keywords real system apps se milte-julte
+/// hote hain (do "Browser" apps, do "Calculator" apps waghera) -- isi
+/// wajah se keyword-based icon matching (jo poori installed-apps list par
+/// chalti hai) confuse ho sakti hai. Callers is flag se apna matching
+/// scope sirf system apps tak seemit rakh sakte hain.
 class InstalledApp {
   final String packageName;
   final String label;
-  const InstalledApp({required this.packageName, required this.label});
+  final bool isSystemApp;
+  const InstalledApp({
+    required this.packageName,
+    required this.label,
+    this.isSystemApp = false,
+  });
 }
 
 /// Ye class Flutter <-> Kotlin ke beech saara MethodChannel communication
@@ -108,6 +121,7 @@ class NativeBridgeService {
           .map((raw) => InstalledApp(
                 packageName: raw['packageName'] as String? ?? '',
                 label: raw['label'] as String? ?? '',
+                isSystemApp: raw['isSystemApp'] as bool? ?? false,
               ))
           .where((app) => app.packageName.isNotEmpty)
           .toList();
@@ -220,16 +234,93 @@ class NativeBridgeService {
   /// Location fetch hone ke turant baad native side jo real temp/condition
   /// (Open-Meteo se) cache karta hai, wahi yahan se padhte hain -- koi naya
   /// network call nahi, sirf cached values. Fetch abhi tak na hui ho to
-  /// dono null milte hain -- caller "--°"/loading state dikhaye.
-  Future<Map<String, String?>> getWeatherSnapshot() async {
+  /// sab null/khaali milte hain -- caller "--°"/loading state dikhaye.
+  ///
+  /// NOTE: `hourly` baaki keys jaisi plain String nahi -- ye ek List of
+  /// maps hai (har ghante ka time/temp/condition), isliye poore result ko
+  /// ek hi type mein blindly cast nahi kar sakte, har key ko uske apne
+  /// type ke hisaab se nikaalna padta hai.
+  Future<Map<String, dynamic>> getWeatherSnapshot() async {
     if (!Platform.isAndroid) return {};
     try {
       final result = await _channel.invokeMethod<Map<Object?, Object?>>('getWeatherSnapshot');
       if (result == null) return {};
-      return result.map((key, value) => MapEntry(key.toString(), value as String?));
+
+      final hourlyRaw = result['hourly'];
+      final hourly = hourlyRaw is List
+          ? hourlyRaw
+              .whereType<Map<Object?, Object?>>()
+              .map((e) => e.map((k, v) => MapEntry(k.toString(), v?.toString() ?? '')))
+              .toList()
+          : <Map<String, String>>[];
+
+      return {
+        'temperature': result['temperature'] as String?,
+        'condition': result['condition'] as String?,
+        'feelsLike': result['feelsLike'] as String?,
+        'humidity': result['humidity'] as String?,
+        'wind': result['wind'] as String?,
+        'hourly': hourly,
+      };
     } on PlatformException catch (e) {
       debugPrint('getWeatherSnapshot failed: ${e.message}');
       return {};
+    }
+  }
+
+  /// Sirf cached label padhta hai -- na GPS, na permission prompt, na
+  /// network call. Widgets screen khulte hi ye chalta hai taake koi
+  /// surprising "location khud badal gayi" na ho, sirf jo user ne pehle
+  /// khud choose ki thi wahi dikhe. Kabhi location choose hi na ki ho to null.
+  Future<String?> getSavedWeatherLocation() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<String>('getSavedWeatherLocation');
+    } on PlatformException catch (e) {
+      debugPrint('getSavedWeatherLocation failed: ${e.message}');
+      return null;
+    }
+  }
+
+  /// City-name search (Open-Meteo Geocoding, native side call karta hai) --
+  /// har result mein name/admin1(region)/country/lat/lon hote hain. Query
+  /// bohat chhoti ho (< 2 characters) to native khaali list de deta hai.
+  Future<List<Map<String, dynamic>>> searchWeatherLocations(String query) async {
+    if (!Platform.isAndroid) return [];
+    try {
+      final result = await _channel.invokeMethod<List<Object?>>(
+        'searchWeatherLocations',
+        {'query': query},
+      );
+      if (result == null) return [];
+      return result
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } on PlatformException catch (e) {
+      debugPrint('searchWeatherLocations failed: ${e.message}');
+      return [];
+    }
+  }
+
+  /// User ne search results mein se jo jagah choose ki, usi ke liye native
+  /// side real weather fetch/cache karta hai aur label save karta hai --
+  /// isi cache se pinned Weather widget bhi turant sync ho jata hai.
+  Future<bool> setWeatherLocation({
+    required double lat,
+    required double lon,
+    required String label,
+  }) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('setWeatherLocation', {
+        'lat': lat,
+        'lon': lon,
+        'label': label,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('setWeatherLocation failed: ${e.message}');
+      return false;
     }
   }
 
@@ -247,6 +338,68 @@ class NativeBridgeService {
     } on PlatformException catch (e) {
       debugPrint('getPinnedWidgetCounts failed: ${e.message}');
       return {};
+    }
+  }
+
+  // ---------------- WIDGET PIN / STYLE ----------------
+
+  /// Apna khud ka custom widget (Battery/Clock/Weather/Calendar/Notes)
+  /// Home Screen par pin karne ki request bhejta hai. Style/mode bhi
+  /// saath bhejte hain taake pinned widget turant sahi look mein dikhe.
+  Future<bool> requestPinWidget({
+    required String widgetType,
+    required String style,
+    required String mode,
+  }) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('requestPinWidget', {
+        'widgetType': widgetType,
+        'style': style,
+        'mode': mode,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('requestPinWidget failed: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Device par installed real Notes/Weather app ka asal widget pin
+  /// karne ki request (custom widget ke bajaye). Sirf "notes" aur
+  /// "weather" types ke liye -- baaki types requestPinWidget se pin
+  /// hote hain.
+  Future<bool> requestPinExternalWidget(String widgetType) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('requestPinExternalWidget', {
+        'widgetType': widgetType,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('requestPinExternalWidget failed: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Already-pinned widgets ko naya style/mode apply karne par turant
+  /// refresh karta hai -- user ko re-pin nahi karna padta.
+  Future<bool> updateWidgetStyle({
+    required String widgetType,
+    required String style,
+    required String mode,
+  }) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('updateWidgetStyle', {
+        'widgetType': widgetType,
+        'style': style,
+        'mode': mode,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('updateWidgetStyle failed: ${e.message}');
+      return false;
     }
   }
 

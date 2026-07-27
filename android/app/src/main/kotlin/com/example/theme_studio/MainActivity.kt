@@ -1,11 +1,15 @@
 package com.example.theme_studio
 
+import android.app.PendingIntent
 import android.app.WallpaperManager
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
@@ -26,6 +30,8 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.text.TextUtils
@@ -44,7 +50,32 @@ class MainActivity : FlutterActivity() {
         /// NotesWidgetProvider (fallback, jab device par koi real notes app
         /// na mile) isi extra ke saath MainActivity ko launch karta hai.
         const val EXTRA_OPEN_NOTES_EDITOR = "open_notes_editor"
+
+        /// WeatherWidgetProvider (tap par) isi extra ke saath MainActivity
+        /// ko launch karta hai -- ab weather widget tap karne par koi bhi
+        /// random installed weather app nahi khulta, seedha humari apni
+        /// "choose location" screen khulti hai, taake widget mein wahi
+        /// location/temp dikhe jo user ne khud app ke andar select ki ho.
+        const val EXTRA_OPEN_WEATHER_LOCATION = "open_weather_location"
+
+        /// requestPinShortcut() ka confirmation callback broadcast action --
+        /// har request apna khud ka unique suffix (requestId) laga leta hai
+        /// (dekho createCustomIconShortcut) taake "Apply All" me ek ke baad
+        /// ek chalne wale multiple requests ka PendingIntent/receiver aapas
+        /// mein collide na karein.
+        private const val PIN_SHORTCUT_ACTION_PREFIX =
+            "com.example.theme_studio.PIN_SHORTCUT_RESULT_"
+
+        /// Itni der wait karte hain ke user Android ka "Add to Home Screen"
+        /// dialog confirm/dismiss kare -- agar is se zyada time guzar jaye
+        /// (user ne dialog ko yun hi chhod diya, ya kisi wajah se system
+        /// broadcast kabhi nahi aata) to hum result ko hamesha ke liye latka
+        /// hua nahi chhod sakte, isliye ek safe "false" fallback bhej dete hain.
+        private const val PIN_SHORTCUT_TIMEOUT_MS = 15000L
     }
+
+    /// Har naye pin-shortcut request ko apna unique requestId chahiye.
+    private var shortcutRequestSeq = 0
 
     /// Cold start (app band thi, widget tap se pehli dafa khuli) -- Flutter
     /// side ko seedha "/notes_editor" route par le jaate hain, splash
@@ -52,6 +83,9 @@ class MainActivity : FlutterActivity() {
     override fun getInitialRoute(): String? {
         if (intent?.getBooleanExtra(EXTRA_OPEN_NOTES_EDITOR, false) == true) {
             return "/notes_editor"
+        }
+        if (intent?.getBooleanExtra(EXTRA_OPEN_WEATHER_LOCATION, false) == true) {
+            return "/weather_location"
         }
         return super.getInitialRoute()
     }
@@ -65,6 +99,9 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         if (intent.getBooleanExtra(EXTRA_OPEN_NOTES_EDITOR, false)) {
             methodChannel?.invokeMethod("openNotesEditor", null)
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_WEATHER_LOCATION, false)) {
+            methodChannel?.invokeMethod("openWeatherLocation", null)
         }
     }
 
@@ -88,7 +125,7 @@ class MainActivity : FlutterActivity() {
                     val packageName = call.argument<String>("packageName")
                     val appLabel = call.argument<String>("appLabel")
                     val iconPath = call.argument<String>("iconPath")
-                    result.success(createCustomIconShortcut(packageName, appLabel, iconPath))
+                    createCustomIconShortcut(packageName, appLabel, iconPath, result)
                 }
                 "isPinShortcutSupported" -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -199,12 +236,77 @@ class MainActivity : FlutterActivity() {
                 }
                 "getWeatherSnapshot" -> {
                     val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+                    val hourlyJson = prefs.getString("weather_hourly_json", null)
+                    val hourlyList: List<Map<String, String>> = if (hourlyJson != null) {
+                        try {
+                            val arr = org.json.JSONArray(hourlyJson)
+                            (0 until arr.length()).map { i ->
+                                val obj = arr.getJSONObject(i)
+                                mapOf(
+                                    "time" to obj.optString("time", ""),
+                                    "temp" to obj.optString("temp", "--°"),
+                                    "condition" to obj.optString("condition", ""),
+                                )
+                            }
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                    } else {
+                        emptyList()
+                    }
+
                     result.success(
                         mapOf(
                             "temperature" to prefs.getString("weather_temp", null),
                             "condition" to prefs.getString("weather_condition", null),
+                            "feelsLike" to prefs.getString("weather_feels_like", null),
+                            "humidity" to prefs.getString("weather_humidity", null),
+                            "wind" to prefs.getString("weather_wind", null),
+                            "hourly" to hourlyList,
                         )
                     )
+                }
+
+                /// GPS/permission ki zaroorat nahi -- sirf jo location user
+                /// ne pehle khud choose ki thi (setWeatherLocation) wo cached
+                /// label seedha SharedPreferences se wapas kar dete hain.
+                /// Isse widgets screen khulte hi koi naya (surprising) GPS
+                /// fetch nahi hota -- sirf wahi dikhta hai jo user ne chuna.
+                "getSavedWeatherLocation" -> {
+                    val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+                    result.success(prefs.getString("weather_location", null))
+                }
+
+                /// Open-Meteo Geocoding API (free, no key) se city-name
+                /// search -- user ko match karne wali jaghain (city, region,
+                /// country + lat/lon) dikhane ke liye, taake wo apni asal
+                /// location khud pick kar sake. Network call hai isliye
+                /// background Thread par (UI freeze na ho).
+                "searchWeatherLocations" -> {
+                    val query = call.argument<String>("query") ?: ""
+                    Thread {
+                        val matches = searchWeatherLocations(query)
+                        runOnUiThread { result.success(matches) }
+                    }.start()
+                }
+
+                /// User ne search results mein se ek jagah choose kar li --
+                /// isi lat/lon ke liye real weather fetch/cache karte hain
+                /// aur label ko "manually chosen" location ke tor par save
+                /// karte hain. Yahi cache Weather widget aur in-app preview
+                /// dono padhte hain, isliye widget bhi turant sync ho jata hai.
+                "setWeatherLocation" -> {
+                    val lat = call.argument<Double>("lat")
+                    val lon = call.argument<Double>("lon")
+                    val label = call.argument<String>("label")
+                    if (lat == null || lon == null || label.isNullOrBlank()) {
+                        result.success(false)
+                    } else {
+                        Thread {
+                            val ok = setManualWeatherLocation(lat, lon, label)
+                            runOnUiThread { result.success(ok) }
+                        }.start()
+                    }
                 }
 
                 else -> result.notImplemented()
@@ -584,7 +686,14 @@ class MainActivity : FlutterActivity() {
     // (ACTION_MAIN + CATEGORY_LAUNCHER) -- ye query OEM-independent hai,
     // isliye Samsung/Infinix/stock Android sab par sahi package names
     // aur labels return karta hai, hardcoded list ke bajaye.
-    private fun getInstalledLaunchableApps(): List<Map<String, String>> {
+    //
+    // [isSystemApp] bhi bhejte hain (ApplicationInfo.FLAG_SYSTEM se) --
+    // emulators par khaas taur par bohat saari dummy/test apps installed
+    // hoti hain jinke naam/keywords real system apps se milte-julte hote
+    // hain (e.g. do "Browser" apps), jo keyword-based icon matching ko
+    // confuse kar sakti hain. Dart side chahe to sirf system apps tak
+    // matching limit kar sakta hai.
+    private fun getInstalledLaunchableApps(): List<Map<String, Any>> {
         val mainIntent = Intent(Intent.ACTION_MAIN, null)
         mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
 
@@ -592,7 +701,7 @@ class MainActivity : FlutterActivity() {
         val ownPackage = packageName // apni khud ki app list me na dikhe
 
         val seen = LinkedHashSet<String>()
-        val apps = mutableListOf<Map<String, String>>()
+        val apps = mutableListOf<Map<String, Any>>()
 
         for (info in resolveInfos) {
             val pkg = info.activityInfo?.packageName ?: continue
@@ -604,11 +713,16 @@ class MainActivity : FlutterActivity() {
             } catch (e: Exception) {
                 pkg
             }
-            apps.add(mapOf("packageName" to pkg, "label" to label))
+
+            val appInfo = info.activityInfo?.applicationInfo
+            val isSystemApp = appInfo != null &&
+                (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+
+            apps.add(mapOf("packageName" to pkg, "label" to label, "isSystemApp" to isSystemApp))
         }
 
         // Label ke hisaab se alphabetically sort -- predictable UI order.
-        return apps.sortedBy { it["label"]?.lowercase() ?: "" }
+        return apps.sortedBy { (it["label"] as? String)?.lowercase() ?: "" }
     }
 
     // ============ NOTES WIDGET (in-app fallback editor) ============
@@ -631,37 +745,149 @@ class MainActivity : FlutterActivity() {
     }
 
     // ============ SHORTCUT LOGIC ============
+    /// Pehle ye function requestPinShortcut() call karke turant "true"
+    /// bhej deta tha -- jabke wo sirf itna confirm karta hai ke system ne
+    /// "Add to Home Screen" dialog dikhana accept kar liya, ye nahi ke user
+    /// ne wakai confirm kiya. Isi wajah se "Apply All" (icon_changer_screen
+    /// ki _applyAllSelected, jo sequential await karti hai) turant agla
+    /// request bhej deta tha, aur dialogs stack ho jaate the -- sirf pehla
+    /// (ya kuch) icon hi asal mein add hota tha.
+    ///
+    /// Fix: requestPinShortcut ko ek PendingIntent callback dete hain. Jab
+    /// tak launcher us callback ko fire nahi karta (matlab user ne dialog
+    /// confirm kar diya), Dart side ka result pending rehta hai -- isliye
+    /// "Apply All" ka loop khud-ba-khud ek-ek dialog ke liye rukta hai,
+    /// aur sab icons ke liye chal sakta hai. Agar user dialog ko ignore
+    /// ya dismiss kar de, ek timeout fallback hai taake result hamesha ke
+    /// liye latka na rahe.
     private fun createCustomIconShortcut(
         packageName: String?,
         appLabel: String?,
-        iconPath: String?
-    ): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
-        if (packageName == null || appLabel == null || iconPath == null) return false
+        iconPath: String?,
+        result: MethodChannel.Result
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            result.success(false)
+            return
+        }
+        if (packageName == null || appLabel == null || iconPath == null) {
+            result.success(false)
+            return
+        }
 
-        val shortcutManager = getSystemService(ShortcutManager::class.java) ?: return false
-        if (!shortcutManager.isRequestPinShortcutSupported) return false
+        val shortcutManager = getSystemService(ShortcutManager::class.java)
+        if (shortcutManager == null || !shortcutManager.isRequestPinShortcutSupported) {
+            result.success(false)
+            return
+        }
 
-        return try {
+        try {
             val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-                ?: return false
+            if (launchIntent == null) {
+                result.success(false)
+                return
+            }
             launchIntent.action = Intent.ACTION_MAIN
 
-            val bitmap = BitmapFactory.decodeFile(iconPath) ?: return false
+            val bitmap = BitmapFactory.decodeFile(iconPath)
+            if (bitmap == null) {
+                result.success(false)
+                return
+            }
             val customIcon = Icon.createWithBitmap(bitmap)
 
-            val shortcut = ShortcutInfo.Builder(this, "shortcut_$packageName")
+            val shortcutId = "theme_studio_$packageName"
+            val shortcut = ShortcutInfo.Builder(this, shortcutId)
                 .setShortLabel(appLabel)
                 .setLongLabel(appLabel)
                 .setIcon(customIcon)
                 .setIntent(launchIntent)
                 .build()
 
-            shortcutManager.requestPinShortcut(shortcut, null)
-            true
+            // IMPORTANT: agar is ID ka shortcut PEHLE se hi pin ho chuka hai
+            // (jaise pehle Cartoon pack se), to requestPinShortcut() ko
+            // DOBARA call karna Home Screen par dikhne wale icon ko UPDATE
+            // NAHI karta -- zyada tar launchers isko "already pinned" treat
+            // karke ya to dialog dikhate hi nahi, ya dialog dikhate hain
+            // lekin asal pinned icon wahi purana rehta hai. Yehi wajah thi
+            // ke theme dobara apply karne par sab shortcuts hamesha
+            // PEHLE wale pack ka (jaise Cartoon) icon dikhate rehte the,
+            // chahe user ne Flat Colors ya Dark Mode select kiya ho.
+            //
+            // Fix: already-pinned shortcuts ke liye updateShortcuts() sahi
+            // API hai -- ye TURANT Home Screen par pinned icon/label
+            // refresh kar deta hai, koi confirmation dialog ki zaroorat
+            // nahi (jaisa ke naya pin karne mein hoti hai).
+            val pinnedShortcuts = shortcutManager.pinnedShortcuts
+            Log.d("ThemeStudio", "createCustomIconShortcut: Total pinned shortcuts: ${pinnedShortcuts.size}")
+            for (pinned in pinnedShortcuts) {
+                Log.d("ThemeStudio", "createCustomIconShortcut: Pinned shortcut ID: ${pinned.id}")
+            }
+            val alreadyPinned = pinnedShortcuts.any { it.id == shortcutId }
+            Log.d("ThemeStudio", "createCustomIconShortcut: Looking for ID: $shortcutId, alreadyPinned: $alreadyPinned")
+            if (alreadyPinned) {
+                shortcutManager.updateShortcuts(listOf(shortcut))
+                Log.d("ThemeStudio", "createCustomIconShortcut: $packageName already pinned -- updated icon in place")
+                result.success(true)
+                return
+            }
+
+            // Har request ka apna unique action + request code -- taake
+            // "Apply All" ke doosre/tisre shortcut ka receiver ya
+            // PendingIntent pehle wale se collide na kare.
+            val requestId = shortcutRequestSeq++
+            val action = "$PIN_SHORTCUT_ACTION_PREFIX$requestId"
+
+            var settled = false
+            val handler = Handler(Looper.getMainLooper())
+            var receiverRef: BroadcastReceiver? = null
+            var timeoutRunnable: Runnable? = null
+
+            fun finish(success: Boolean) {
+                if (settled) return
+                settled = true
+                timeoutRunnable?.let { handler.removeCallbacks(it) }
+                receiverRef?.let {
+                    try {
+                        unregisterReceiver(it)
+                    } catch (e: Exception) {
+                        // pehle hi unregistered ho chuka (timeout/receiver
+                        // dono ka race) -- ignore, koi masla nahi.
+                    }
+                }
+                result.success(success)
+            }
+
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    finish(true)
+                }
+            }
+            receiverRef = receiver
+
+            val filter = IntentFilter(action)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(receiver, filter)
+            }
+
+            timeoutRunnable = Runnable { finish(false) }
+            handler.postDelayed(timeoutRunnable, PIN_SHORTCUT_TIMEOUT_MS)
+
+            val callbackIntent = Intent(action).setPackage(applicationContext.packageName)
+            val pendingIntent = PendingIntent.getBroadcast(
+                this,
+                requestId,
+                callbackIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            shortcutManager.requestPinShortcut(shortcut, pendingIntent.intentSender)
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            result.success(false)
         }
     }
 
@@ -948,7 +1174,10 @@ class MainActivity : FlutterActivity() {
     private fun fetchAndCacheCurrentWeather(lat: Double, lon: Double) {
         try {
             val url = java.net.URL(
-                "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true"
+                "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+                    "&current_weather=true" +
+                    "&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,weathercode" +
+                    "&timezone=auto&forecast_days=2"
             )
             val connection = url.openConnection() as java.net.HttpURLConnection
             connection.requestMethod = "GET"
@@ -962,15 +1191,86 @@ class MainActivity : FlutterActivity() {
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
 
-            val current = org.json.JSONObject(body).getJSONObject("current_weather")
+            val json = org.json.JSONObject(body)
+            val current = json.getJSONObject("current_weather")
             val tempC = current.getDouble("temperature")
             val code = current.getInt("weathercode")
+            val windKmh = current.optDouble("windspeed", Double.NaN)
+            val currentTime = current.optString("time", "")
+
+            // "current_weather" khud feels-like/humidity nahi deta -- wo
+            // sirf "hourly" array mein aate hain. Isliye current_weather
+            // ke exact "time" se match karke hourly array mein wahi index
+            // dhoondte hain, taake feels-like/humidity bhi USI ghante ke
+            // hon jis ghante ka temperature/condition dikha rahe hain.
+            val hourly = json.optJSONObject("hourly")
+            var feelsLikeC: Double? = null
+            var humidityPct: Int? = null
+            val hourlyJsonArray = org.json.JSONArray()
+
+            if (hourly != null) {
+                val times = hourly.optJSONArray("time")
+                val temps = hourly.optJSONArray("temperature_2m")
+                val humidities = hourly.optJSONArray("relative_humidity_2m")
+                val apparents = hourly.optJSONArray("apparent_temperature")
+                val codes = hourly.optJSONArray("weathercode")
+
+                var currentIdx = 0
+                if (times != null && currentTime.isNotBlank()) {
+                    for (i in 0 until times.length()) {
+                        if (times.optString(i) == currentTime) {
+                            currentIdx = i
+                            break
+                        }
+                    }
+                }
+
+                if (apparents != null && currentIdx < apparents.length()) {
+                    feelsLikeC = apparents.optDouble(currentIdx)
+                }
+                if (humidities != null && currentIdx < humidities.length()) {
+                    humidityPct = humidities.optInt(currentIdx, -1).takeIf { it >= 0 }
+                }
+
+                // Agle 8 ghanton ka hourly forecast (abhi wale ghante se shuru).
+                if (times != null) {
+                    val endIdx = minOf(currentIdx + 8, times.length())
+                    for (i in currentIdx until endIdx) {
+                        val temp = temps?.optDouble(i)
+                        val entry = org.json.JSONObject()
+                        entry.put("time", times.optString(i))
+                        entry.put(
+                            "temp",
+                            if (temp != null && !temp.isNaN()) "${Math.round(temp)}°" else "--°"
+                        )
+                        entry.put("condition", weatherCodeToLabel(codes?.optInt(i, -1) ?: -1))
+                        hourlyJsonArray.put(entry)
+                    }
+                }
+            }
 
             val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit()
+            val editor = prefs.edit()
                 .putString("weather_temp", "${Math.round(tempC)}°")
                 .putString("weather_condition", weatherCodeToLabel(code))
-                .apply()
+                .putString("weather_hourly_json", hourlyJsonArray.toString())
+
+            if (feelsLikeC != null && !feelsLikeC.isNaN()) {
+                editor.putString("weather_feels_like", "${Math.round(feelsLikeC)}°")
+            } else {
+                editor.remove("weather_feels_like")
+            }
+            if (humidityPct != null) {
+                editor.putString("weather_humidity", "$humidityPct%")
+            } else {
+                editor.remove("weather_humidity")
+            }
+            if (!windKmh.isNaN()) {
+                editor.putString("weather_wind", "${Math.round(windKmh)} km/h")
+            } else {
+                editor.remove("weather_wind")
+            }
+            editor.apply()
         } catch (e: Exception) {
             // Network na ho, API down ho, ya JSON parse fail ho -- cache
             // jaisi thi waisi rehti hai (ya khaali), UI khud fallback dikhati hai.
@@ -995,6 +1295,88 @@ class MainActivity : FlutterActivity() {
         95 -> "Thunderstorm"
         96, 99 -> "Thunderstorm, hail"
         else -> "Unknown"
+    }
+
+    /// Open-Meteo Geocoding API se city-name query karta hai -- har result
+    /// mein "name" (city), "admin1" (state/region, ho sakta hai na ho) aur
+    /// "country" milte hain, saath lat/lon bhi taake seedha weather fetch
+    /// ho sake. Query khaali/blank ho ya kam se kam 2 characters na hon to
+    /// khaali list -- bekar ki API calls se bachne ke liye.
+    private fun searchWeatherLocations(query: String): List<Map<String, Any?>> {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return emptyList()
+
+        return try {
+            val encoded = java.net.URLEncoder.encode(trimmed, "UTF-8")
+            val url = java.net.URL(
+                "https://geocoding-api.open-meteo.com/v1/search?name=$encoded&count=8&language=en&format=json"
+            )
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
+
+            if (connection.responseCode != 200) {
+                connection.disconnect()
+                return emptyList()
+            }
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
+
+            val results = org.json.JSONObject(body).optJSONArray("results") ?: return emptyList()
+            (0 until results.length()).mapNotNull { i ->
+                val item = results.optJSONObject(i) ?: return@mapNotNull null
+                val name = item.optString("name", "")
+                if (name.isBlank()) return@mapNotNull null
+                mapOf(
+                    "name" to name,
+                    "admin1" to item.optString("admin1", "").ifBlank { null },
+                    "country" to item.optString("country", "").ifBlank { null },
+                    "lat" to item.optDouble("latitude"),
+                    "lon" to item.optDouble("longitude"),
+                )
+            }
+        } catch (e: Exception) {
+            // Network na ho ya API down ho -- khaali list, UI "no results"
+            // jaisa dikha de.
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /// User ke manually chuni hui location ke liye real weather fetch/cache
+    /// karta hai aur pinned Weather widgets ko refresh karta hai -- GPS
+    /// wale [fetchAndCacheWeatherLocation] jaisa hi last step, bas location
+    /// khud Geocoder se nahi, user ke search-selection se aati hai.
+    private fun setManualWeatherLocation(lat: Double, lon: Double, label: String): Boolean {
+        return try {
+            val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putString("weather_location", label).apply()
+            fetchAndCacheCurrentWeather(lat, lon)
+            refreshPinnedWeatherWidgets()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /// Sab pinned Weather widget instances ko turant re-draw karne ke liye
+    /// broadcast bhejta hai -- fetchAndCacheWeatherLocation (GPS path) aur
+    /// setManualWeatherLocation (manual-pick path) dono isi ek jagah se
+    /// widget refresh karte hain, taake dono jagah code duplicate na ho.
+    private fun refreshPinnedWeatherWidgets() {
+        val appWidgetManager = getSystemService(AppWidgetManager::class.java)
+        val ids = appWidgetManager?.getAppWidgetIds(
+            ComponentName(this, WeatherWidgetProvider::class.java)
+        )
+        if (ids != null && ids.isNotEmpty()) {
+            val updateIntent = Intent(this, WeatherWidgetProvider::class.java).apply {
+                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+            }
+            sendBroadcast(updateIntent)
+        }
     }
 
     // ============ WEATHER WIDGET LOCATION ============
@@ -1068,18 +1450,7 @@ class MainActivity : FlutterActivity() {
             // fetch karke cache kar dete hain (widget aur in-app preview
             // dono isi cache se padhte hain).
             fetchAndCacheCurrentWeather(location.latitude, location.longitude)
-
-            val appWidgetManager = getSystemService(AppWidgetManager::class.java)
-            val ids = appWidgetManager?.getAppWidgetIds(
-                ComponentName(this, WeatherWidgetProvider::class.java)
-            )
-            if (ids != null && ids.isNotEmpty()) {
-                val updateIntent = Intent(this, WeatherWidgetProvider::class.java).apply {
-                    action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
-                }
-                sendBroadcast(updateIntent)
-            }
+            refreshPinnedWeatherWidgets()
 
             label
         } catch (e: Exception) {

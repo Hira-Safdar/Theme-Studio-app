@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/app_strings.dart';
+import '../services/locale_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/settings_row.dart';
 
@@ -25,9 +27,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
-  String _languageCode = 'en';
-
   static const _languages = {
     'en': 'English',
     'ur': 'اردو',
@@ -36,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   };
 
   Future<void> _openLanguagePicker() async {
+    final currentCode = LocaleController.instance.languageCode;
     final selected = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.bgSurfaceRaised,
@@ -49,7 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: _languages.entries.map((entry) {
-            final isSelected = entry.key == _languageCode;
+            final isSelected = entry.key == currentCode;
             return ListTile(
               title: Text(entry.value, style: AppTypography.body),
               trailing: isSelected
@@ -62,8 +62,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
 
-    if (selected != null && mounted) {
-      setState(() => _languageCode = selected);
+    // setState yahan khud nahi chahiye -- LocaleController.setLanguage()
+    // notifyListeners() call karta hai, jo main.dart ke ListenableBuilder
+    // se poori app (is screen samet) turant rebuild kar deta hai.
+    if (selected != null) {
+      await LocaleController.instance.setLanguage(selected);
     }
   }
 
@@ -93,38 +96,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(tr('settings_title'))),
       body: ListView(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.screenPadding,
           vertical: AppSpacing.lg,
         ),
         children: [
-          const SettingsSectionHeader(label: 'General'),
+          SettingsSectionHeader(label: tr('settings_section_general')),
           SettingsGroup(
             children: [
               SettingsRow(
                 icon: Icons.language,
-                label: 'Language',
-                trailingText: _languages[_languageCode],
+                label: tr('settings_language'),
+                trailingText: _languages[LocaleController.instance.languageCode],
                 onTap: _openLanguagePicker,
               ),
-              SettingsRow(
-                icon: Icons.notifications_outlined,
-                label: 'Notifications',
-                toggleValue: _notificationsEnabled,
-                onToggleChanged: (v) => setState(() => _notificationsEnabled = v),
-              ),
+              // Notifications option removed for now (deliberately) --
+              // no notification system exists yet, so a toggle here would
+              // control nothing. Re-add once there's an actual feature
+              // behind it.
             ],
           ),
-          const SettingsSectionHeader(label: 'Help'),
+          SettingsSectionHeader(label: tr('settings_section_help')),
           SettingsGroup(
             children: [
               SettingsRow(
                 icon: Icons.apps_outlined,
-                label: 'How icon shortcuts work',
+                label: tr('settings_how_icons'),
                 onTap: () => _openExplainer(
-                  'How icon shortcuts work',
+                  tr('settings_how_icons'),
                   'Android doesn\'t let apps replace another app\'s icon directly. '
                       'When you tap Apply on the Icon changer screen, Theme studio '
                       'creates a new Home Screen shortcut with the icon you picked. '
@@ -134,9 +135,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               SettingsRow(
                 icon: Icons.widgets_outlined,
-                label: 'How widgets work',
+                label: tr('settings_how_widgets'),
                 onTap: () => _openExplainer(
-                  'How widgets work',
+                  tr('settings_how_widgets'),
                   'Home Screen widgets are drawn entirely by Android, not by this app. '
                       'Tapping "Pin to Home Screen" sends a request to your launcher, '
                       'which shows its own confirmation before adding the widget. '
@@ -145,9 +146,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               SettingsRow(
                 icon: Icons.tune,
-                label: 'How Control Center works',
+                label: tr('settings_how_control'),
                 onTap: () => _openExplainer(
-                  'How Control Center works',
+                  tr('settings_how_control'),
                   'Control Center is an overlay drawn using Android\'s Accessibility '
                       'Service. That service needs to be turned on once in Android '
                       'Settings — Android requires this to be a manual, explicit step. '
@@ -157,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               SettingsRow(
                 icon: Icons.mail_outline,
-                label: 'Send feedback',
+                label: tr('settings_send_feedback'),
                 onTap: () => _openLink(
                   Uri(
                     scheme: 'mailto',
@@ -168,24 +169,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          const SettingsSectionHeader(label: 'About'),
+          SettingsSectionHeader(label: tr('settings_section_about')),
           SettingsGroup(
             children: [
               SettingsRow(
                 icon: Icons.privacy_tip_outlined,
-                label: 'Privacy policy',
+                label: tr('settings_privacy'),
                 onTap: () => _openLink(Uri.parse(_privacyPolicyUrl)),
               ),
               SettingsRow(
                 icon: Icons.star_outline,
-                label: 'Rate the app',
+                label: tr('settings_rate'),
                 onTap: () => _openLink(
                   Uri.parse('https://play.google.com/store/apps/details?id=$_playStorePackageId'),
                 ),
               ),
-              const SettingsRow(
+              SettingsRow(
                 icon: Icons.info_outline,
-                label: 'Version',
+                label: tr('settings_version'),
                 trailingText: '1.0.0',
               ),
             ],

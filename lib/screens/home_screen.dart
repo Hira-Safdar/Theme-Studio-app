@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/theme_model.dart';
+import '../services/app_strings.dart';
 import '../services/theme_controller.dart';
 import '../theme/app_theme.dart';
-import '../widgets/preset_theme_card.dart';
+import '../widgets/preset_theme_card.dart' show PresetCardStatus;
+import '../widgets/theme_grid_tile.dart';
+import 'theme_preview_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -36,18 +39,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleTap(ThemeModel theme) async {
-    await controller.applyTheme(theme);
-    final errors = controller.lastErrors;
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          errors.isEmpty
-              ? '${theme.name} applied'
-              : 'Applied with some steps failed — tap to retry',
-        ),
-      ),
-    );
+    // Seedha apply nahi karte -- pehle Wallpaper screen jaisa ek preview
+    // dikhate hain (wallpaper + is pack ke real sample icons), user Apply
+    // tap kare tabhi ThemeController.applyTheme() chalta hai (ye khud
+    // ThemePreviewScreen ke andar hota hai).
+    await ThemePreviewScreen.show(context, theme);
+    // controller already ChangeNotifier hai (listener already lagi hai),
+    // isliye card ka status apne aap refresh ho jaayega -- yahan kuch
+    // extra karne ki zarurat nahi.
   }
 
   @override
@@ -63,23 +62,38 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      body: Column(
         children: [
-          const Text(
-            'Select a theme — wallpaper and icon pack will be applied together.',
-            style: AppTypography.bodySecondary,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding,
+              AppSpacing.screenPadding,
+              AppSpacing.screenPadding,
+              0,
+            ),
+            child: Text(
+              tr('home_instruction'),
+              style: AppTypography.bodySecondary,
+            ),
           ),
-          const SizedBox(height: AppSpacing.sectionGap),
-          ...presetThemes.map(
-            (theme) => PresetThemeCard(
-              theme: theme,
-              status: _statusFor(theme),
-              errorSummary:
-                  controller.activeThemeId == theme.id && controller.lastErrors.isNotEmpty
-                      ? controller.lastErrors.join(', ')
-                      : null,
-              onTap: controller.isApplying ? null : () => _handleTap(theme),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: AppSpacing.md,
+                mainAxisSpacing: AppSpacing.md,
+                childAspectRatio: 2 / 3,
+              ),
+              itemCount: presetThemes.length,
+              itemBuilder: (context, i) {
+                final theme = presetThemes[i];
+                return ThemeGridTile(
+                  theme: theme,
+                  status: _statusFor(theme),
+                  onTap: controller.isApplying ? null : () => _handleTap(theme),
+                );
+              },
             ),
           ),
         ],

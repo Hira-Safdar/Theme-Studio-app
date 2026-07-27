@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle, AssetManifest;
 import 'package:image_picker/image_picker.dart';
+import '../services/app_strings.dart';
 import '../services/native_bridge_service.dart';
 import '../services/icon_pack_service.dart';
 import '../theme/app_theme.dart';
@@ -123,13 +124,16 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     );
   }
 
-  String _titleCase(String s) => s[0].toUpperCase() + s.substring(1);
+  String _titleCase(String s) {
+    if (s.isEmpty) return s;
+    return s[0].toUpperCase() + s.substring(1);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Wallpapers'),
+        title: Text(tr('wallpaper_title')),
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,

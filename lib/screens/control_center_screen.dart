@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/app_strings.dart';
 import '../services/native_bridge_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/accessibility_status_card.dart';
@@ -56,7 +57,7 @@ class _ControlCenterScreenState extends State<ControlCenterScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Control center')),
+      appBar: AppBar(title: Text(tr('control_center_title'))),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [

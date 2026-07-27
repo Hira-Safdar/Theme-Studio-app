@@ -4,17 +4,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Icon ka source do tarah se aa sakta hai:
-/// 1. bundled  -> humari app ke assets/icon_packs/<packId>/<appKey>.png se
-/// 2. custom   -> user ne apni gallery se is specific app ke liye icon choose kiya
-enum IconSource { bundled, custom }
-
-class ResolvedIcon {
-  final IconSource source;
-  final String path; // bundled ho to asset path, custom ho to file path
-  ResolvedIcon(this.source, this.path);
-}
-
 class IconPackService {
   IconPackService._();
   static final IconPackService instance = IconPackService._();
@@ -67,30 +56,21 @@ class IconPackService {
     }
   }
 
-  /// Ye function decide karta hai ke final icon kahan se aayega:
-  /// pehle custom (agar user ne apna icon set kiya hua hai), warna bundled pack.
-  Future<ResolvedIcon> resolveIcon({
-    required String packageName,
-    required String appKey,
-    required String activePackId,
-  }) async {
-    final customPath = await getCustomIconPath(packageName);
-    if (customPath != null && await File(customPath).exists()) {
-      return ResolvedIcon(IconSource.custom, customPath);
-    }
-    return ResolvedIcon(
-      IconSource.bundled,
-      bundledAssetPath(activePackId, appKey),
-    );
-  }
-
   /// Bundled (asset) icon ko ek real file me convert karta hai, kyunki
   /// Kotlin ki ShortcutManager ko ek file-system path chahiye hota hai,
   /// Flutter asset bundle path nahi chal sakta seedha.
+  ///
+  /// IMPORTANT: [assetPath] ka hashCode filename mein shamil karte hain,
+  /// sirf [cacheKey] (jo aksar sirf packageName hota hai) par depend nahi
+  /// karte. Warna ek hi app ke liye do alag packs (cartoon vs dark_mode)
+  /// same cache file overwrite kar sakte the, aur agar kabhi calls
+  /// overlap/race ho jaayen to stale (purane pack ka) icon file use ho
+  /// sakti thi.
   Future<String> assetToFile(String assetPath, String cacheKey) async {
     final byteData = await rootBundle.load(assetPath);
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/icon_cache_$cacheKey.png');
+    final uniqueKey = '${cacheKey}_${assetPath.hashCode}';
+    final file = File('${dir.path}/icon_cache_$uniqueKey.png');
     await file.writeAsBytes(
       byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
     );

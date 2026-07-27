@@ -6,6 +6,9 @@ import 'screens/widgets_screen.dart';
 import 'screens/control_center_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/notes_editor_screen.dart';
+import 'screens/weather_location_screen.dart';
+import 'services/app_strings.dart';
+import 'services/locale_controller.dart';
 import 'services/native_bridge_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
@@ -31,6 +34,12 @@ class _ThemeStudioAppState extends State<ThemeStudioApp> {
   @override
   void initState() {
     super.initState();
+    // Pehle se saved language load karo -- LocaleController khud
+    // notifyListeners() call karega jab load complete ho, jo neeche wale
+    // ListenableBuilder ko rebuild trigger kar dega (English se saved
+    // language pe switch, agar kuch aur save tha).
+    LocaleController.instance.load();
+
     // Native (MainActivity.onNewIntent) se "openNotesEditor" call sunte
     // hain -- ye sirf tab aata hai jab Notes widget ka fallback-editor
     // tap ho aur app already background/foreground mein chal rahi ho.
@@ -38,21 +47,37 @@ class _ThemeStudioAppState extends State<ThemeStudioApp> {
       if (method == 'openNotesEditor') {
         navigatorKey.currentState?.pushNamed('/notes_editor');
       }
+      // Weather widget tap (warm start, app already chal rahi ho) -- Notes
+      // ke fallback-editor jaisa hi pattern, bas yahan har baar chalta hai
+      // (fallback-only nahi) kyunke widget tap ka poora point hi location
+      // choose/change karna hai.
+      if (method == 'openWeatherLocation') {
+        navigatorKey.currentState?.pushNamed('/weather_location');
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      theme: AppTheme.themeData,
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const SplashScreen(),
-        '/home': (context) => const RootShell(),
-        '/settings': (context) => const SettingsScreen(),
-        '/notes_editor': (context) => const NotesEditorScreen(),
-      },
+    // Poora app isi ek listener ke andar hai -- jab bhi language badle,
+    // LocaleController.notifyListeners() se ye poora tree rebuild ho jata
+    // hai, isliye har screen ka tr(...) turant naya text dikhata hai,
+    // koi individual screen ko khud LocaleController sunne ki zarurat
+    // nahi (app is chhoti hai, poora tree rebuild karna sasta hai).
+    return ListenableBuilder(
+      listenable: LocaleController.instance,
+      builder: (context, _) => MaterialApp(
+        navigatorKey: navigatorKey,
+        theme: AppTheme.themeData,
+        initialRoute: '/',
+        routes: {
+          '/': (context) => const SplashScreen(),
+          '/home': (context) => const RootShell(),
+          '/settings': (context) => const SettingsScreen(),
+          '/notes_editor': (context) => const NotesEditorScreen(),
+          '/weather_location': (context) => const WeatherLocationScreen(),
+        },
+      ),
     );
   }
 }
@@ -81,12 +106,12 @@ class _RootShellState extends State<RootShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.wallpaper), label: 'Wallpaper'),
-          NavigationDestination(icon: Icon(Icons.apps), label: 'Icons'),
-          NavigationDestination(icon: Icon(Icons.widgets), label: 'Widgets'),
-          NavigationDestination(icon: Icon(Icons.tune), label: 'Control'),
+        destinations: [
+          NavigationDestination(icon: const Icon(Icons.home), label: tr('nav_home')),
+          NavigationDestination(icon: const Icon(Icons.wallpaper), label: tr('nav_wallpaper')),
+          NavigationDestination(icon: const Icon(Icons.apps), label: tr('nav_icons')),
+          NavigationDestination(icon: const Icon(Icons.widgets), label: tr('nav_widgets')),
+          NavigationDestination(icon: const Icon(Icons.tune), label: tr('nav_control')),
         ],
       ),
     );

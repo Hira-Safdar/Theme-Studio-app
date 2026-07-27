@@ -83,24 +83,20 @@ object WidgetClickActions {
         }
     }
 
-    /// [Intent.CATEGORY_APP_WEATHER] se koi bhi installed weather app milta
-    /// hai to seedha wahi khulta hai; koi na mile (bohat kam devices par
-    /// hota hai) to Google search fallback -- ye hamesha available hota hai.
+    /// Pehle ye kisi bhi random installed weather app (ya Google search)
+    /// ko khol deta tha -- jo widget mein dikhne wali location/temp se
+    /// bilkul unrelated hoti thi (wo app apni khud ki saved location use
+    /// karta hai), isliye confusing tha ke widget ka temp kahan se aa raha
+    /// hai. Ab seedha humari apni "choose location" screen khulti hai --
+    /// jo location user wahan chunta hai, wahi widget mein bhi dikhti hai
+    /// (dono ek hi cache se sync hote hain).
     private fun openWeatherApp(context: Context) {
-        val weatherIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_APP_WEATHER)
-        }.newTaskFlag()
-
-        val resolved = context.packageManager.resolveActivity(weatherIntent, 0)
-        if (resolved != null) {
-            safeStart(context, weatherIntent)
-        } else {
-            safeStart(
-                context,
-                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=weather"))
-                    .newTaskFlag(),
-            )
+        val intent = Intent(context, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            putExtra(MainActivity.EXTRA_OPEN_WEATHER_LOCATION, true)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
+        context.startActivity(intent)
     }
 
     /// Notes ka tap ab pehle device ka apna (real) Notes app kholne ki

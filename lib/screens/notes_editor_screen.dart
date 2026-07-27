@@ -39,7 +39,7 @@ class _NotesEditorScreenState extends State<NotesEditorScreen> {
     if (!mounted) return;
     setState(() => _saving = false);
     if (ok) {
-      Navigator.of(context).maybePop();
+      Navigator.of(context).pop();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Couldn\'t save note — tap to retry')),

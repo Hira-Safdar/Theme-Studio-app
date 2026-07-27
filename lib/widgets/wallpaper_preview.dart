@@ -114,83 +114,97 @@ class _PhoneFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 9 / 19.5,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: AppColors.borderFocus, width: 6),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image(image: image, fit: BoxFit.cover),
-            // Dummy status bar + icons at low opacity — for judging
-            // wallpaper legibility, not a functional status bar.
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Opacity(
-                opacity: 0.55,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.sm,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '9:41',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          Icon(Icons.signal_cellular_alt, color: Colors.white, size: 14),
-                          SizedBox(width: 4),
-                          Icon(Icons.wifi, color: Colors.white, size: 14),
-                          SizedBox(width: 4),
-                          Icon(Icons.battery_full, color: Colors.white, size: 14),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+    // IMPORTANT: the horizontal spacing has to be a Padding OUTSIDE
+    // AspectRatio, not a margin on the Container inside it. AspectRatio
+    // sizes its child first based on the 9:19.5 ratio, so a margin
+    // applied afterward just shrinks the rendered box without the ratio
+    // adjusting — the frame ends up narrower than intended relative to
+    // its height. Padding here means AspectRatio computes the ratio
+    // AFTER the horizontal space is already accounted for.
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 300),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+          child: AspectRatio(
+            aspectRatio: 9 / 19.5,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: AppColors.borderFocus, width: 6),
               ),
-            ),
-            // A few dummy app icons near the bottom, also low-opacity,
-            // so the preview reads like a Home Screen rather than a
-            // bare image viewer.
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: AppSpacing.xl,
-              child: Opacity(
-                opacity: 0.55,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: List.generate(
-                    4,
-                    (_) => Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        borderRadius: AppRadius.mdRadius,
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image(image: image, fit: BoxFit.cover),
+                  // Dummy status bar + icons at low opacity — for judging
+                  // wallpaper legibility, not a functional status bar.
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Opacity(
+                      opacity: 0.55,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md,
+                          vertical: AppSpacing.sm,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '9:41',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Icon(Icons.signal_cellular_alt, color: Colors.white, size: 14),
+                                SizedBox(width: 4),
+                                Icon(Icons.wifi, color: Colors.white, size: 14),
+                                SizedBox(width: 4),
+                                Icon(Icons.battery_full, color: Colors.white, size: 14),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  // A few dummy app icons near the bottom, also low-opacity,
+                  // so the preview reads like a Home Screen rather than a
+                  // bare image viewer.
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: AppSpacing.xl,
+                    child: Opacity(
+                      opacity: 0.55,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: List.generate(
+                          4,
+                          (_) => Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              borderRadius: AppRadius.mdRadius,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

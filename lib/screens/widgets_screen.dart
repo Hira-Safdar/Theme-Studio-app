@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../theme/app_theme.dart';
 import '../widgets/pack_selector.dart';
+import '../services/app_strings.dart';
 import '../services/native_bridge_service.dart';
 import 'notes_editor_screen.dart';
+import 'weather_location_screen.dart';
 
 /// IMPORTANT: Flutter khud "Home Screen widget" nahi bana sakta.
 /// Home Screen widgets 100% native Android cheez hain (AppWidgetProvider),
@@ -44,7 +45,6 @@ class WidgetsScreen extends StatefulWidget {
 }
 
 class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserver {
-  static const _channel = MethodChannel('com.example.theme_studio/native');
 
   final Map<String, WidgetPinStatus> _status = {
     'battery': WidgetPinStatus.idle,
@@ -66,7 +66,9 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
   Timer? _clockTicker;
   DateTime _now = DateTime.now();
 
-  // Weather: real (approx) location, resolved once permission is granted.
+  // Weather: whatever the user last chose in the Weather Location screen --
+  // no GPS, no silent auto-detect. Kabhi choose na ki ho to null, aur UI
+  // "Location unavailable" dikhati hai (tap se picker screen khulti hai).
   String? _weatherLocation;
   bool _weatherLocationLoading = false;
 
@@ -85,9 +87,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
     WidgetsBinding.instance.addObserver(this);
     // Drives the live clock/calendar preview — purely cosmetic, not tied
     // to the native widget, which renders itself once actually pinned.
-    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
-    });
+    _startClockTicker();
     _refreshNoteText();
     _initWeatherLocation();
     _refreshPinnedCounts();
@@ -109,7 +109,20 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
       _refreshNoteText();
       _refreshPinnedCounts();
       _refreshWeatherSnapshot();
+      // App foreground par aaya -- clock ticker dobara start karo.
+      _startClockTicker();
+    } else {
+      // App background mein ja raha hai -- clock ticker roko, battery bachao.
+      _clockTicker?.cancel();
+      _clockTicker = null;
     }
+  }
+
+  void _startClockTicker() {
+    _clockTicker?.cancel();
+    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
   }
 
   Future<void> _refreshPinnedCounts() async {
@@ -155,26 +168,28 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
     _refreshNoteText();
   }
 
+  /// Sirf cached label padhta hai -- na GPS, na permission prompt, na
+  /// network call. Widgets screen khulte hi (ya resume par) ye chalta hai
+  /// taake koi surprising "location khud badal gayi" na ho, sirf jo user
+  /// ne Weather Location screen mein khud choose ki thi wahi dikhe.
   Future<void> _initWeatherLocation() async {
     setState(() => _weatherLocationLoading = true);
-    var status = await Permission.location.status;
-    if (!status.isGranted && !status.isPermanentlyDenied) {
-      status = await Permission.location.request();
-    }
+    final label = await NativeBridgeService.instance.getSavedWeatherLocation();
     if (!mounted) return;
-    if (status.isGranted) {
-      final label = await NativeBridgeService.instance.getWeatherLocation();
-      if (!mounted) return;
-      setState(() {
-        _weatherLocation = label;
-        _weatherLocationLoading = false;
-      });
-      // Location fetch ke turant baad native side temp/condition bhi
-      // cache kar chuka hota hai -- ab wahi padh lete hain.
-      _refreshWeatherSnapshot();
-    } else {
-      setState(() => _weatherLocationLoading = false);
-    }
+    setState(() {
+      _weatherLocation = label;
+      _weatherLocationLoading = false;
+    });
+    _refreshWeatherSnapshot();
+  }
+
+  /// Tap par humari apni "choose location" screen khulti hai -- wahan se
+  /// wapas aane par yahan ka footnote/temp turant refresh ho jaata hai.
+  Future<void> _openWeatherLocationScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WeatherLocationScreen()),
+    );
+    _initWeatherLocation();
   }
 
   Future<void> _refreshWeatherSnapshot() async {
@@ -186,57 +201,15 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
     });
   }
 
-  /// Notes/Weather ke liye -- Theme Studio ka apna custom widget pin karne
-  /// ke bajaye, device par jo bhi real Notes/Weather app installed hai,
-  /// pehle USI ka asal widget pin karne ki koshish karta hai. Agar koi
-  /// candidate app na mile ya us app ka koi widget na ho, hamare apne
-  /// custom widget (_requestPinWidget) par fallback karta hai -- taake
-  /// user kabhi khaali-haath na rahe.
-  Future<void> _requestPinExternalWidget(String widgetType) async {
-    setState(() => _status[widgetType] = WidgetPinStatus.requesting);
-
-    try {
-      final ok = await _channel.invokeMethod<bool>('requestPinExternalWidget', {
-        'widgetType': widgetType,
-      });
-
-      if (!mounted) return;
-
-      if (ok == true) {
-        setState(() => _status[widgetType] = WidgetPinStatus.pinned);
-        _refreshPinnedCounts();
-      } else {
-        // Koi real Notes/Weather app (ya uska widget) nahi mila -- hamare
-        // apne widget par fallback, warna user ke paas kuch bhi nahi hoga.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widgetType == 'notes'
-                  ? "Couldn't find a Notes app widget — using Theme Studio's own widget instead"
-                  : "Couldn't find a Weather app widget — using Theme Studio's own widget instead",
-            ),
-          ),
-        );
-        await _requestPinWidget(widgetType);
-      }
-    } on PlatformException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Couldn\'t request the widget — ${e.message ?? 'try again'}')),
-      );
-      await _requestPinWidget(widgetType);
-    }
-  }
-
   Future<void> _requestPinWidget(String widgetType) async {
     setState(() => _status[widgetType] = WidgetPinStatus.requesting);
 
     try {
-      final ok = await _channel.invokeMethod<bool>('requestPinWidget', {
-        'widgetType': widgetType,
-        'style': _style,
-        'mode': _mode,
-      });
+      final ok = await NativeBridgeService.instance.requestPinWidget(
+        widgetType: widgetType,
+        style: _style,
+        mode: _mode,
+      );
 
       if (!mounted) return;
 
@@ -270,15 +243,11 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
         .where((e) => e.value == WidgetPinStatus.pinned)
         .map((e) => e.key);
     for (final widgetType in pinnedTypes) {
-      try {
-        await _channel.invokeMethod('updateWidgetStyle', {
-          'widgetType': widgetType,
-          'style': _style,
-          'mode': _mode,
-        });
-      } on PlatformException {
-        // Silent -- agla pin/interaction pe sahi style apply ho hi jayegi.
-      }
+      await NativeBridgeService.instance.updateWidgetStyle(
+        widgetType: widgetType,
+        style: _style,
+        mode: _mode,
+      );
     }
   }
 
@@ -295,7 +264,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Widgets')),
+      appBar: AppBar(title: Text(tr('widgets_title'))),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
@@ -392,28 +361,33 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                 preview: _StyledWidgetPreview(
                   style: _style,
                   mode: _mode,
-                  builder: (textColor, secondaryColor, iconColor) => Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_weatherTemp ?? '--°', style: AppTypography.body.copyWith(color: textColor)),
-                      const SizedBox(height: 2),
-                      Text(
-                        _weatherCondition ?? 'Waiting for location…',
-                        style: AppTypography.bodySecondary.copyWith(color: secondaryColor),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+                  builder: (textColor, secondaryColor, iconColor) => FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_weatherTemp ?? '--°', style: AppTypography.body.copyWith(color: textColor)),
+                        const SizedBox(height: 2),
+                        Text(
+                          _weatherCondition ?? 'Waiting for location…',
+                          style: AppTypography.bodySecondary.copyWith(color: secondaryColor),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 status: _status['weather']!,
                 pinnedCount: _pinnedCounts['weather'] ?? 0,
-                onTap: () => _requestPinExternalWidget('weather'),
+                onTap: () => _requestPinWidget('weather'),
                 onRemove: () => _showRemoveInstructions('Weather'),
                 footnote: _weatherLocationLoading
-                    ? 'Locating…'
-                    : (_weatherLocation ?? 'Location unavailable'),
+                    ? 'Loading…'
+                    : (_weatherLocation ?? 'Choose location'),
                 footnoteIcon: Icons.location_on_outlined,
-                onFootnoteTap: _weatherLocationLoading ? null : _initWeatherLocation,
+                onFootnoteTap: _weatherLocationLoading ? null : _openWeatherLocationScreen,
               ),
               _CompactWidgetCard(
                 name: 'Calendar',
@@ -450,7 +424,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                 ),
                 status: _status['notes']!,
                 pinnedCount: _pinnedCounts['notes'] ?? 0,
-                onTap: () => _requestPinExternalWidget('notes'),
+                onTap: () => _requestPinWidget('notes'),
                 onRemove: () => _showRemoveInstructions('Notes'),
                 footnote: 'Edit note',
                 footnoteIcon: Icons.edit_outlined,

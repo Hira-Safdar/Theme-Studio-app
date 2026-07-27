@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../services/app_strings.dart';
+import '../services/icon_matching_service.dart';
 import '../services/icon_pack_service.dart';
 import '../services/native_bridge_service.dart';
 import '../theme/app_theme.dart';
@@ -7,21 +10,9 @@ import '../widgets/disclosure_banner.dart';
 import '../widgets/icon_list_row.dart';
 import '../widgets/pack_selector.dart';
 
-/// Ek app entry: package name, label, aur icon-pack lookup ke liye keyword.
-/// [iconKey] ab nullable hai -- device par installed har app hamare 10
-/// bundled categories (browser/calculator/...) mein fit nahi hoti, aisi
-/// apps ke liye bundled tabs par sirf generic fallback icon dikhega
-/// (Custom tab hamesha available rehta hai).
-class AppEntry {
-  final String packageName;
-  final String label;
-  final String? iconKey;
-  const AppEntry(this.packageName, this.label, this.iconKey);
-}
-
 /// Bundled (pre-made) icon packs -- matches assets/icon_packs/<id>/ folder
 /// structure. Ye teeno "edit" nahi ho sakte -- fixed/curated packs hain.
-const List<String> bundledIconPacks = ['cartoon', 'flat_colors', 'dark_mode'];
+const List<String> bundledIconPacks = IconMatchingService.bundledIconPacks;
 
 /// "Auto" -- koi bundled asset nahi, koi manual pick bhi nahi. Har
 /// installed app ka REAL icon leke native side par ek consistent shape +
@@ -82,73 +73,10 @@ const List<Color> autoAccentPresets = [
 String _colorToHex(Color c) =>
     '#${c.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
 
-/// Curated exact-package mapping -- well-known apps (WhatsApp, Instagram,
-/// etc.) ko unka apna distinct iconKey milta hai, generic category-guess
-/// (neeche wala _guessKeywordIconKey) ki wajah se ek jaisa shared icon nahi
-/// milta. Ye check hamesha keyword-guess se PEHLE hota hai (dekho
-/// _guessIconKey neeche). Ye sirf bundled (Cartoon/Flat/Dark) tabs par
-/// istemal hoti hai -- Auto tab is se independent hai (wo har app ka
-/// apna real icon hi use karta hai, mapping ki zaroorat nahi).
-///
-/// NOTE -- asset status: filhaal sirf 10 keys ke PNGs bundled hain
-/// (browser/calculator/calendar/camera/clock/contacts/gallery/messages/
-/// phone/settings). Neeche wale naye keys (whatsapp/messenger/instagram/
-/// facebook/youtube/telegram/gmail/snapchat/tiktok/x/spotify/netflix) ke
-/// liye tab tak generic fallback icon hi dikhega jab tak aap
-/// assets/icon_packs/<pack>/<key>.png add na karo -- crash nahi hoga
-/// (IconListRow ka errorBuilder sambhal leta hai), matlab code abhi se
-/// future-proof hai. Jaise-jaise PNGs add karti jaogi, wo apps automatically
-/// apna distinct icon dikhane lagengi, koi aur code change nahi chahiye.
-const Map<String, String> curatedPackageIconKeys = {
-  'com.whatsapp': 'whatsapp',
-  'com.whatsapp.w4b': 'whatsapp',
-  'com.facebook.orca': 'messenger',
-  'com.facebook.katana': 'facebook',
-  'com.facebook.lite': 'facebook',
-  'com.instagram.android': 'instagram',
-  'com.google.android.youtube': 'youtube',
-  'org.telegram.messenger': 'telegram',
-  'com.google.android.gm': 'gmail',
-  'com.snapchat.android': 'snapchat',
-  'com.zhiliaoapp.musically': 'tiktok',
-  'com.ss.android.ugc.trill': 'tiktok',
-  'com.twitter.android': 'x',
-  'com.spotify.music': 'spotify',
-  'com.netflix.mediaclient': 'netflix',
-};
-
-/// Bundled icon packs sirf 10 fixed keywords cover karte hain (browser,
-/// calculator, calendar, camera, clock, contacts, gallery, messages,
-/// phone, settings). Real device par installed kisi bhi app ke liye
-/// package name + label me in keywords ko dhoond kar best-guess iconKey
-/// nikalta hai. Match na mile to null (row par bundled tabs pe generic
-/// fallback icon dikhega, Custom/Auto tab phir bhi kaam karega).
-String? _guessKeywordIconKey(String packageName, String label) {
-  final p = packageName.toLowerCase();
-  final l = label.toLowerCase();
-  bool has(List<String> needles) =>
-      needles.any((n) => p.contains(n) || l.contains(n));
-
-  if (has(['chrome', 'browser', 'firefox', 'internet', 'webview'])) return 'browser';
-  if (has(['calculator', 'calc'])) return 'calculator';
-  if (has(['calendar'])) return 'calendar';
-  if (has(['camera'])) return 'camera';
-  if (has(['clock', 'deskclock', 'alarm'])) return 'clock';
-  if (has(['contacts', 'people'])) return 'contacts';
-  if (has(['gallery', 'photos', 'album', 'gallery3d'])) return 'gallery';
-  if (has(['messag', 'sms', 'mms'])) return 'messages';
-  if (has(['dialer', 'incallui']) || l == 'phone') return 'phone';
-  if (has(['settings'])) return 'settings';
-  return null;
-}
-
-/// Final iconKey resolver (bundled tabs ke liye): pehle curated
-/// exact-package table check hoti hai (well-known apps ko unka apna icon),
-/// tabhi na mile to generic keyword-category guess pe fallback hota hai.
-String? _guessIconKey(String packageName, String label) {
-  return curatedPackageIconKeys[packageName] ??
-      _guessKeywordIconKey(packageName, label);
-}
+/// Curated exact-package mapping aur keyword-guess logic ab shared
+/// IconMatchingService mein hai (services/icon_matching_service.dart) --
+/// taake ThemeController bhi wahi exact matching use kar sake jo yahan
+/// dikhti hai.
 
 class IconChangerScreen extends StatefulWidget {
   const IconChangerScreen({super.key});
@@ -173,6 +101,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   Color _autoAccent = autoAccentPresets.first;
   bool _loadingAutoPreviews = false;
   final Map<String, String> _autoPreviewPaths = {};
+  Timer? _autoDebounce;
 
   // Checkbox reference design (Themie-style) me sab default-selected hote
   // hain -- "Apply All" isi selection set par kaam karta hai. Apps load
@@ -181,6 +110,31 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
 
   bool get _isCustomTab => activeCategory == customCategoryId;
   bool get _isAutoTab => activeCategory == autoCategoryId;
+
+  /// Kya [app] ke paas ABHI ke active tab ke hisaab se koi dikhane wala
+  /// icon maujood hai -- Custom tab par user-picked icon, Auto tab par
+  /// generated+cached themed icon, bundled tabs (Cartoon/Flat colors/Dark
+  /// mode) par guessed iconKey.
+  bool _appHasIcon(AppEntry app) {
+    if (_isCustomTab) return _customIconPaths[app.packageName] != null;
+    if (_isAutoTab) return _autoPreviewPaths[app.packageName] != null;
+    return app.iconKey != null;
+  }
+
+  /// [_apps] ko do groups mein split karke wapas jodta hai -- jin apps ka
+  /// icon maujood hai wo pehle, phir baaki -- taake user ko turant pata
+  /// chale ke konsi apps abhi apply karne layak hain. Har group ke andar
+  /// original (alphabetical) order barqarar rehta hai, isliye simple
+  /// split-and-concat use kiya hai (List.sort() stable guarantee nahi
+  /// deta, isliye usse groups ke andar order badal sakta tha).
+  List<AppEntry> get _sortedApps {
+    final withIcon = <AppEntry>[];
+    final withoutIcon = <AppEntry>[];
+    for (final app in _apps) {
+      (_appHasIcon(app) ? withIcon : withoutIcon).add(app);
+    }
+    return [...withIcon, ...withoutIcon];
+  }
 
   @override
   void initState() {
@@ -200,21 +154,20 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
         .map((a) => AppEntry(
               a.packageName,
               a.label.isNotEmpty ? a.label : a.packageName,
-              _guessIconKey(a.packageName, a.label),
+              IconMatchingService.instance.guessIconKey(a.packageName, a.label),
             ))
         .toList();
 
     setState(() {
       _apps = apps;
-      _selectedPackages
-        ..clear()
-        ..addAll(apps.map((a) => a.packageName));
       _loadingApps = false;
     });
 
     _loadExistingCustomIcons();
     _loadOldIcons();
     if (_isAutoTab) _loadAutoPreviews();
+    // Bundled tabs ke liye foran selection update karo (iconKey-based)
+    if (!_isAutoTab && !_isCustomTab) _refreshSelection();
   }
 
   /// Har app ka asal (device par currently laga hua) launcher icon
@@ -237,14 +190,22 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   }
 
   Future<void> _loadExistingCustomIcons() async {
-    for (final app in _apps) {
+    // Parallel fetch -- sab apps ke custom icon paths ek saath fetch hote
+    // hain, sequential await ke bajaye. Phir ek hi setState se sab update.
+    final results = await Future.wait(_apps.map((app) async {
       final path = await IconPackService.instance.getCustomIconPath(app.packageName);
-      if (path != null && mounted) {
-        setState(() {
-          _customIconPaths[app.packageName] = path;
-        });
+      return MapEntry(app.packageName, path);
+    }));
+    if (!mounted) return;
+    setState(() {
+      for (final entry in results) {
+        if (entry.value != null) {
+          _customIconPaths[entry.key] = entry.value!;
+        }
       }
-    }
+    });
+    // Custom icons load hone ke baad selection refresh karo (agar custom tab active hai)
+    if (_isCustomTab) _refreshSelection();
   }
 
   /// Har app ke liye native se themed (duotone/neon + shape-masked) icon
@@ -279,6 +240,8 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
         ..addEntries(results.whereType<MapEntry<String, String>>());
       _loadingAutoPreviews = false;
     });
+    // Auto previews load hone ke baad selection refresh karo
+    _refreshSelection();
   }
 
   void _onCategoryChanged(String id) {
@@ -286,21 +249,53 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     if (id == autoCategoryId && _autoPreviewPaths.isEmpty && !_loadingAutoPreviews) {
       _loadAutoPreviews();
     }
+    // Tab change par selection refresh karo -- sirf available icons wale apps
+    _refreshSelection();
+  }
+
+  /// Selection ko refresh karta hai -- sirf wo apps select rehte hain
+  /// jinke paas current tab ke liye icon available hai. Baqi apps
+  /// (jinke liye koi icon/bundle nahi) automatically deselect ho jaate hain
+  /// taake "Apply All" par unke liye error na aaye.
+  void _refreshSelection() {
+    setState(() {
+      _selectedPackages
+        ..clear()
+        ..addAll(_apps.where(_appHasIcon).map((a) => a.packageName));
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoDebounce?.cancel();
+    super.dispose();
   }
 
   void _onAutoShapeChanged(String shape) {
     setState(() => _autoShape = shape);
-    _loadAutoPreviews();
+    _debounceAutoPreviews();
   }
 
   void _onAutoStyleChanged(String style) {
     setState(() => _autoStyle = style);
-    _loadAutoPreviews();
+    _debounceAutoPreviews();
   }
 
   void _onAutoAccentChanged(Color color) {
     setState(() => _autoAccent = color);
-    _loadAutoPreviews();
+    _debounceAutoPreviews();
+  }
+
+  /// Auto tab ke controls (shape/style/accent) mein se koi bhi change hone
+  /// par turant _loadAutoPreviews() call karne ke bajaye 250ms rukte hain --
+  /// agar user tezi se multiple changes kare (e.g. color picker drag kare)
+  /// to har change par poori list regenerate karna wasteful hota, debounce
+  /// se sirf aakhri change par ek baar hota hai.
+  void _debounceAutoPreviews() {
+    _autoDebounce?.cancel();
+    _autoDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (mounted && _isAutoTab) _loadAutoPreviews();
+    });
   }
 
   void _toggleSelected(String packageName, bool? value) {
@@ -387,11 +382,14 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   /// Selected rows ko ek-ek karke apply karta hai (sequential -- Android
   /// ek waqt me ek hi "Add to Home Screen" confirmation dialog theek se
   /// dikhata hai, isliye parallel requests bhejna reliable nahi hoga).
+  /// Apps jinke paas icon nahi hai wo silently skip ho jaate hain.
   Future<void> _applyAllSelected() async {
-    final targets = _apps.where((a) => _selectedPackages.contains(a.packageName)).toList();
+    final targets = _apps
+        .where((a) => _selectedPackages.contains(a.packageName) && _appHasIcon(a))
+        .toList();
     if (targets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select at least one app first')),
+        const SnackBar(content: Text('No apps with available icons selected')),
       );
       return;
     }
@@ -421,8 +419,11 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Ek hi baar compute karte hain -- ListView.builder ke itemBuilder ke
+    // andar dobara sort karna har row ke liye wasteful hota.
+    final sortedApps = _sortedApps;
     return Scaffold(
-      appBar: AppBar(title: const Text('Icon changer')),
+      appBar: AppBar(title: Text(tr('icon_changer_title'))),
       body: Column(
         children: [
           const DisclosureBanner(
@@ -466,9 +467,9 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
                     : ListView.builder(
                         padding:
                             const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                        itemCount: _apps.length,
+                        itemCount: sortedApps.length,
                         itemBuilder: (context, i) {
-                          final app = _apps[i];
+                          final app = sortedApps[i];
                           final customPath = _customIconPaths[app.packageName];
                           final autoPath = _autoPreviewPaths[app.packageName];
 

@@ -1,0 +1,139 @@
+// lib/services/app_strings.dart
+//
+// Lightweight in-house translation lookup -- deliberately NOT using
+// Flutter's ARB/gen-l10n tooling, since that needs a code-gen build step
+// that's easy to break mid-development. This is a plain Map lookup: add
+// a key here once, use `tr('key')` anywhere in the UI.
+//
+// COVERAGE NOTE: this first pass covers the app shell (bottom nav labels,
+// each screen's AppBar title) and the full Settings screen -- the two
+// places most likely to be seen right after switching language, so the
+// change is immediately obvious. The longer explainer paragraphs (Icon
+// changer/Widgets/Control Center "how it works" bodies) and in-screen
+// content are still English-only for now; extending translation to them
+// is the same pattern (wrap the string in `tr('new_key')` + add the key
+// to all 4 maps below) and can be done incrementally.
+import 'locale_controller.dart';
+
+const Map<String, Map<String, String>> _strings = {
+  'en': {
+    'nav_home': 'Home',
+    'nav_wallpaper': 'Wallpaper',
+    'nav_icons': 'Icons',
+    'nav_widgets': 'Widgets',
+    'nav_control': 'Control',
+
+    'wallpaper_title': 'Wallpaper',
+    'icon_changer_title': 'Icon changer',
+    'widgets_title': 'Widgets',
+    'control_center_title': 'Control Center',
+
+    'home_instruction':
+        'Select a theme — wallpaper and icon pack will be applied together.',
+
+    'settings_title': 'Settings',
+    'settings_section_general': 'General',
+    'settings_section_help': 'Help',
+    'settings_section_about': 'About',
+    'settings_language': 'Language',
+    'settings_how_icons': 'How icon shortcuts work',
+    'settings_how_widgets': 'How widgets work',
+    'settings_how_control': 'How Control Center works',
+    'settings_send_feedback': 'Send feedback',
+    'settings_privacy': 'Privacy policy',
+    'settings_rate': 'Rate the app',
+    'settings_version': 'Version',
+  },
+  'ur': {
+    'nav_home': 'ہوم',
+    'nav_wallpaper': 'وال پیپر',
+    'nav_icons': 'آئیکنز',
+    'nav_widgets': 'ویجٹس',
+    'nav_control': 'کنٹرول',
+
+    'wallpaper_title': 'وال پیپر',
+    'icon_changer_title': 'آئیکن چینجر',
+    'widgets_title': 'ویجٹس',
+    'control_center_title': 'کنٹرول سینٹر',
+
+    'home_instruction': 'ایک تھیم منتخب کریں — وال پیپر اور آئیکن پیک ایک ساتھ لاگو ہوں گے۔',
+
+    'settings_title': 'ترتیبات',
+    'settings_section_general': 'عمومی',
+    'settings_section_help': 'مدد',
+    'settings_section_about': 'ایپ کے بارے میں',
+    'settings_language': 'زبان',
+    'settings_how_icons': 'آئیکن شارٹ کٹس کیسے کام کرتے ہیں',
+    'settings_how_widgets': 'ویجٹس کیسے کام کرتے ہیں',
+    'settings_how_control': 'کنٹرول سینٹر کیسے کام کرتا ہے',
+    'settings_send_feedback': 'رائے بھیجیں',
+    'settings_privacy': 'رازداری کی پالیسی',
+    'settings_rate': 'ایپ کو ریٹ کریں',
+    'settings_version': 'ورژن',
+  },
+  'es': {
+    'nav_home': 'Inicio',
+    'nav_wallpaper': 'Fondo',
+    'nav_icons': 'Iconos',
+    'nav_widgets': 'Widgets',
+    'nav_control': 'Control',
+
+    'wallpaper_title': 'Fondo de pantalla',
+    'icon_changer_title': 'Cambiar iconos',
+    'widgets_title': 'Widgets',
+    'control_center_title': 'Centro de control',
+
+    'home_instruction':
+        'Elige un tema — el fondo de pantalla y el paquete de iconos se aplicarán juntos.',
+
+    'settings_title': 'Ajustes',
+    'settings_section_general': 'General',
+    'settings_section_help': 'Ayuda',
+    'settings_section_about': 'Acerca de',
+    'settings_language': 'Idioma',
+    'settings_how_icons': 'Cómo funcionan los accesos directos de iconos',
+    'settings_how_widgets': 'Cómo funcionan los widgets',
+    'settings_how_control': 'Cómo funciona el Centro de control',
+    'settings_send_feedback': 'Enviar comentarios',
+    'settings_privacy': 'Política de privacidad',
+    'settings_rate': 'Valorar la app',
+    'settings_version': 'Versión',
+  },
+  'fr': {
+    'nav_home': 'Accueil',
+    'nav_wallpaper': "Fond d'écran",
+    'nav_icons': 'Icônes',
+    'nav_widgets': 'Widgets',
+    'nav_control': 'Contrôle',
+
+    'wallpaper_title': "Fond d'écran",
+    'icon_changer_title': "Changer d'icônes",
+    'widgets_title': 'Widgets',
+    'control_center_title': 'Centre de contrôle',
+
+    'home_instruction':
+        "Choisissez un thème — le fond d'écran et le pack d'icônes seront appliqués ensemble.",
+
+    'settings_title': 'Paramètres',
+    'settings_section_general': 'Général',
+    'settings_section_help': 'Aide',
+    'settings_section_about': 'À propos',
+    'settings_language': 'Langue',
+    'settings_how_icons': "Comment fonctionnent les raccourcis d'icônes",
+    'settings_how_widgets': 'Comment fonctionnent les widgets',
+    'settings_how_control': 'Comment fonctionne le Centre de contrôle',
+    'settings_send_feedback': 'Envoyer des commentaires',
+    'settings_privacy': 'Politique de confidentialité',
+    'settings_rate': "Évaluer l'application",
+    'settings_version': 'Version',
+  },
+};
+
+/// Current language ke hisaab se translated string deta hai. Key kisi
+/// bhi language mein na mile to English fallback, wo bhi na ho to key
+/// khud return ho jaati hai (crash kabhi nahi hoga, worst case English
+/// ya raw key dikhega).
+String tr(String key) {
+  final code = LocaleController.instance.languageCode;
+  return _strings[code]?[key] ?? _strings['en']?[key] ?? key;
+}
