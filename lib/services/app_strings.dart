@@ -23,10 +23,12 @@ const Map<String, Map<String, String>> _strings = {
     'nav_widgets': 'Widgets',
     'nav_control': 'Control',
 
+    'app_title': 'Theme studio',
     'wallpaper_title': 'Wallpaper',
     'icon_changer_title': 'Icon changer',
     'widgets_title': 'Widgets',
     'control_center_title': 'Control Center',
+    'splash_setting_up': 'Setting things up…',
 
     'home_instruction':
         'Select a theme — wallpaper and icon pack will be applied together.',
@@ -43,6 +45,16 @@ const Map<String, Map<String, String>> _strings = {
     'settings_privacy': 'Privacy policy',
     'settings_rate': 'Rate the app',
     'settings_version': 'Version',
+    'search_apps_hint': 'Search apps…',
+    'search_no_results': 'No apps match your search',
+    'widget_font_size': 'Font size',
+    'widget_text_color': 'Text color',
+    'widget_bg_opacity': 'Background opacity',
+    'widget_corner_radius': 'Corner radius',
+    'favorites_filter': 'Favorites',
+    'favorites_empty': 'No favorites yet — tap the heart icon on a theme.',
+    'settings_dark_mode': 'Dark mode',
+    'online_tab': 'Online',
   },
   'ur': {
     'nav_home': 'ہوم',
@@ -51,10 +63,12 @@ const Map<String, Map<String, String>> _strings = {
     'nav_widgets': 'ویجٹس',
     'nav_control': 'کنٹرول',
 
+    'app_title': 'تھیم اسٹوڈیو',
     'wallpaper_title': 'وال پیپر',
     'icon_changer_title': 'آئیکن چینجر',
     'widgets_title': 'ویجٹس',
     'control_center_title': 'کنٹرول سینٹر',
+    'splash_setting_up': 'تیار ہو رہا ہے…',
 
     'home_instruction': 'ایک تھیم منتخب کریں — وال پیپر اور آئیکن پیک ایک ساتھ لاگو ہوں گے۔',
 
@@ -70,6 +84,16 @@ const Map<String, Map<String, String>> _strings = {
     'settings_privacy': 'رازداری کی پالیسی',
     'settings_rate': 'ایپ کو ریٹ کریں',
     'settings_version': 'ورژن',
+    'search_apps_hint': 'ایپس تلاش کریں…',
+    'search_no_results': 'کوئی ایپ نہیں ملی',
+    'widget_font_size': 'فونٹ سائز',
+    'widget_text_color': 'متن کا رنگ',
+    'widget_bg_opacity': 'پس منظر کی شفافیت',
+    'widget_corner_radius': 'کونے کی گولائی',
+    'favorites_filter': 'پسندیدہ',
+    'favorites_empty': 'ابھی تک کوئی پسندیدہ نہیں — تھیم پر دل کے آئیکن پر ٹیپ کریں۔',
+    'settings_dark_mode': 'ڈارک موڈ',
+    'online_tab': 'آن لائن',
   },
   'es': {
     'nav_home': 'Inicio',
@@ -78,10 +102,12 @@ const Map<String, Map<String, String>> _strings = {
     'nav_widgets': 'Widgets',
     'nav_control': 'Control',
 
+    'app_title': 'Theme studio',
     'wallpaper_title': 'Fondo de pantalla',
     'icon_changer_title': 'Cambiar iconos',
     'widgets_title': 'Widgets',
     'control_center_title': 'Centro de control',
+    'splash_setting_up': 'Preparando todo…',
 
     'home_instruction':
         'Elige un tema — el fondo de pantalla y el paquete de iconos se aplicarán juntos.',
@@ -98,6 +124,16 @@ const Map<String, Map<String, String>> _strings = {
     'settings_privacy': 'Política de privacidad',
     'settings_rate': 'Valorar la app',
     'settings_version': 'Versión',
+    'search_apps_hint': 'Buscar apps…',
+    'search_no_results': 'Ninguna app coincide',
+    'widget_font_size': 'Tamaño de fuente',
+    'widget_text_color': 'Color del texto',
+    'widget_bg_opacity': 'Opacidad de fondo',
+    'widget_corner_radius': 'Radio de esquina',
+    'favorites_filter': 'Favoritos',
+    'favorites_empty': 'Sin favoritos aún — toca el corazón en un tema.',
+    'settings_dark_mode': 'Modo oscuro',
+    'online_tab': 'En línea',
   },
   'fr': {
     'nav_home': 'Accueil',
@@ -106,10 +142,12 @@ const Map<String, Map<String, String>> _strings = {
     'nav_widgets': 'Widgets',
     'nav_control': 'Contrôle',
 
+    'app_title': 'Theme studio',
     'wallpaper_title': "Fond d'écran",
     'icon_changer_title': "Changer d'icônes",
     'widgets_title': 'Widgets',
     'control_center_title': 'Centre de contrôle',
+    'splash_setting_up': 'Préparation en cours…',
 
     'home_instruction':
         "Choisissez un thème — le fond d'écran et le pack d'icônes seront appliqués ensemble.",
@@ -126,6 +164,16 @@ const Map<String, Map<String, String>> _strings = {
     'settings_privacy': 'Politique de confidentialité',
     'settings_rate': "Évaluer l'application",
     'settings_version': 'Version',
+    'search_apps_hint': 'Rechercher…',
+    'search_no_results': 'Aucune application trouvée',
+    'widget_font_size': 'Taille de police',
+    'widget_text_color': 'Couleur du texte',
+    'widget_bg_opacity': 'Opacité du fond',
+    'widget_corner_radius': 'Rayon de coin',
+    'favorites_filter': 'Favoris',
+    'favorites_empty': 'Pas encore de favoris — appuyez sur le cœur sur un thème.',
+    'settings_dark_mode': 'Mode sombre',
+    'online_tab': 'En ligne',
   },
 };
 

@@ -24,11 +24,15 @@ class ThemeGridTile extends StatelessWidget {
     required this.theme,
     required this.status,
     required this.onTap,
+    required this.isFavorite,
+    required this.onToggleFavorite,
   });
 
   final ThemeModel theme;
   final PresetCardStatus status;
   final VoidCallback? onTap;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
 
   Color get _accentColor => theme.accentColor;
 
@@ -98,13 +102,32 @@ class ThemeGridTile extends StatelessWidget {
                   right: AppSpacing.sm,
                   child: _StatusBadge(status: status),
                 ),
+              Positioned(
+                top: AppSpacing.sm,
+                left: AppSpacing.sm,
+                child: GestureDetector(
+                  onTap: onToggleFavorite,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                      size: 18,
+                      color: isFavorite ? AppColors.error : Colors.white,
+                    ),
+                  ),
+                ),
+              ),
               // Is theme ke icon pack ke 2 real sample icons -- taake grid
               // mein sirf wallpaper nahi, icon-style bhi ek nazar mein
               // pata chale.
               Positioned(
                 left: AppSpacing.sm,
                 right: AppSpacing.sm,
-                bottom: 40,
+                bottom: AppSpacing.xxxl,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: _tilePreviewIconKeys

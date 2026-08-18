@@ -18,6 +18,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../services/app_strings.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -58,15 +59,13 @@ class _SplashScreenState extends State<SplashScreen>
 
     // await themeController.loadCachedPresets();
     // await accessibilityStatus.check();
-    await Future.delayed(const Duration(milliseconds: 900));
+    await Future.delayed(const Duration(milliseconds: 2500));
 
     statusTimer.cancel();
     stopwatch.stop();
 
     if (!mounted) return;
 
-    // Splash always resolves to Home — never Settings or a specific tool,
-    // regardless of what the user was doing on last close.
     Navigator.of(context).pushReplacementNamed('/home');
   }
 
@@ -89,8 +88,8 @@ class _SplashScreenState extends State<SplashScreen>
             children: [
               _AppMark(),
               const SizedBox(height: AppSpacing.xl),
-              const Text(
-                'Theme studio',
+              Text(
+                tr('app_title'),
                 style: AppTypography.heading,
                 textAlign: TextAlign.center,
               ),
@@ -99,11 +98,11 @@ class _SplashScreenState extends State<SplashScreen>
               AnimatedSwitcher(
                 duration: AppMotion.standard,
                 child: _showStatus
-                    ? const Padding(
-                        key: ValueKey('status'),
-                        padding: EdgeInsets.only(top: AppSpacing.md),
+                    ? Padding(
+                        key: const ValueKey('status'),
+                        padding: const EdgeInsets.only(top: AppSpacing.md),
                         child: Text(
-                          'Setting things up…',
+                          tr('splash_setting_up'),
                           style: AppTypography.bodySecondary,
                           textAlign: TextAlign.center,
                         ),

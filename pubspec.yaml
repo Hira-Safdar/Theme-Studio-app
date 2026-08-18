@@ -15,6 +15,7 @@ dependencies:
   permission_handler: ^11.3.1 # accessibility / storage permission checks
   shared_preferences: ^2.2.3  # applied theme / icon pack state save karne ke liye
   url_launcher: ^6.3.1
+  http: ^1.2.0                # online wallpapers download karne ke liye
 
 dev_dependencies:
   flutter_test:

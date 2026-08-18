@@ -27,11 +27,11 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  // Backgrounds
+  // Backgrounds (dark)
   static const bgBase = Color(0xFF0E1013);
   static const bgSurface = Color(0xFF16191D);
   static const bgSurfaceRaised = Color(0xFF1E2227);
-  static const bgOverlay = Color(0xEB1A1D21); // #1A1D21 @ 92%, pair with BackdropFilter blur
+  static const bgOverlay = Color(0xEB1A1D21);
 
   // Borders
   static const borderSubtle = Color(0xFF2A2E34);
@@ -42,7 +42,7 @@ class AppColors {
   static const textSecondary = Color(0xFF9AA0A8);
   static const textDisabled = Color(0xFF5C6169);
 
-  // Accent — use sparingly, never as large fills
+  // Accent
   static const accentPrimary = Color(0xFF00FFF0);
   static const accentPrimaryMuted = Color(0xFF1A5B57);
 
@@ -51,7 +51,7 @@ class AppColors {
   static const warning = Color(0xFFFBBF24);
   static const error = Color(0xFFF87171);
 
-  // Mood — reserved for Home preset swatches ONLY. Do not use elsewhere.
+  // Mood
   static const moodOcean = Color(0xFF2AA9C4);
   static const moodMidnight = Color(0xFF5B4B9E);
   static const moodSunset = Color(0xFFE8875A);
@@ -65,6 +65,32 @@ class AppColors {
     moodForest,
     moodRose,
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Light color tokens -- mirrors AppColors structure for light theme
+// ---------------------------------------------------------------------------
+class AppColorsLight {
+  AppColorsLight._();
+
+  static const bgBase = Color(0xFFF5F5F5);
+  static const bgSurface = Color(0xFFFFFFFF);
+  static const bgSurfaceRaised = Color(0xFFF0F0F0);
+  static const bgOverlay = Color(0xF0FFFFFF);
+
+  static const borderSubtle = Color(0xFFE0E0E0);
+  static const borderFocus = Color(0xFFBDBDBD);
+
+  static const textPrimary = Color(0xFF1A1A1A);
+  static const textSecondary = Color(0xFF6B6B6B);
+  static const textDisabled = Color(0xFFBDBDBD);
+
+  static const accentPrimary = Color(0xFF00B8A9);
+  static const accentPrimaryMuted = Color(0xFFD4F5F2);
+
+  static const success = Color(0xFF2E7D32);
+  static const warning = Color(0xFFF57F17);
+  static const error = Color(0xFFD32F2F);
 }
 
 // ---------------------------------------------------------------------------
@@ -235,7 +261,31 @@ class AppTypography {
 class AppTheme {
   AppTheme._();
 
-  static ThemeData get themeData {
+  /// Returns true if the current theme is light mode.
+  static bool isLight(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.light;
+
+  /// Returns the appropriate surface color based on current brightness.
+  static Color surface(BuildContext context) =>
+      isLight(context) ? AppColorsLight.bgSurface : AppColors.bgSurface;
+
+  /// Returns the appropriate raised surface color based on current brightness.
+  static Color surfaceRaised(BuildContext context) =>
+      isLight(context) ? AppColorsLight.bgSurfaceRaised : AppColors.bgSurfaceRaised;
+
+  /// Returns the appropriate scaffold background color.
+  static Color scaffoldBg(BuildContext context) =>
+      isLight(context) ? AppColorsLight.bgBase : AppColors.bgBase;
+
+  /// Returns appropriate text primary color.
+  static Color textPrimary(BuildContext context) =>
+      isLight(context) ? AppColorsLight.textPrimary : AppColors.textPrimary;
+
+  /// Returns appropriate text secondary color.
+  static Color textSecondary(BuildContext context) =>
+      isLight(context) ? AppColorsLight.textSecondary : AppColors.textSecondary;
+
+  static ThemeData get darkThemeData {
     const colorScheme = ColorScheme.dark(
       surface: AppColors.bgSurface,
       onSurface: AppColors.textPrimary,
@@ -339,6 +389,117 @@ class AppTheme {
       iconTheme: const IconThemeData(color: AppColors.textSecondary, size: 20),
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.bgSurfaceRaised,
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.lgRadius),
+      ),
+    );
+  }
+
+  static ThemeData get lightThemeData {
+    const colorScheme = ColorScheme.light(
+      surface: AppColorsLight.bgSurface,
+      onSurface: AppColorsLight.textPrimary,
+      primary: AppColorsLight.accentPrimary,
+      onPrimary: Colors.white,
+      secondary: AppColorsLight.accentPrimaryMuted,
+      onSecondary: AppColorsLight.accentPrimary,
+      error: AppColorsLight.error,
+      onError: Colors.white,
+      outline: AppColorsLight.borderSubtle,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: AppColorsLight.bgBase,
+      colorScheme: colorScheme,
+      fontFamily: AppTypography.fontFamily,
+      textTheme: TextTheme(
+        headlineMedium: AppTypography.display.copyWith(color: AppColorsLight.textPrimary),
+        titleLarge: AppTypography.heading.copyWith(color: AppColorsLight.textPrimary),
+        bodyLarge: AppTypography.body.copyWith(color: AppColorsLight.textPrimary),
+        bodySmall: AppTypography.bodySecondary.copyWith(color: AppColorsLight.textSecondary),
+        labelSmall: AppTypography.label.copyWith(color: AppColorsLight.textSecondary),
+        labelLarge: AppTypography.button.copyWith(color: AppColorsLight.textPrimary),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppColorsLight.bgBase,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        titleTextStyle: TextStyle(
+          fontSize: 28,
+          height: 34 / 28,
+          fontWeight: FontWeight.w600,
+          color: AppColorsLight.textPrimary,
+        ),
+        iconTheme: IconThemeData(color: AppColorsLight.textPrimary),
+      ),
+      cardTheme: CardThemeData(
+        color: AppColorsLight.bgSurface,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.mdRadius),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: AppColorsLight.borderSubtle,
+        thickness: 1,
+        space: 1,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: AppColorsLight.bgSurface,
+        indicatorColor: AppColorsLight.accentPrimaryMuted,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return AppTypography.label.copyWith(
+            color: selected ? AppColorsLight.accentPrimary : AppColorsLight.textSecondary,
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected ? AppColorsLight.accentPrimary : AppColorsLight.textSecondary,
+          );
+        }),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColorsLight.accentPrimaryMuted,
+          foregroundColor: AppColorsLight.accentPrimary,
+          textStyle: AppTypography.button,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.smRadius),
+          elevation: 0,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColorsLight.textPrimary,
+          side: const BorderSide(color: AppColorsLight.borderSubtle),
+          textStyle: AppTypography.button,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.smRadius),
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          return states.contains(WidgetState.selected)
+              ? AppColorsLight.accentPrimary
+              : AppColorsLight.textSecondary;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          return states.contains(WidgetState.selected)
+              ? AppColorsLight.accentPrimaryMuted
+              : AppColorsLight.bgSurfaceRaised;
+        }),
+      ),
+      iconTheme: const IconThemeData(color: AppColorsLight.textSecondary, size: 20),
+      dialogTheme: DialogThemeData(
+        backgroundColor: AppColorsLight.bgSurface,
         shape: RoundedRectangleBorder(borderRadius: AppRadius.lgRadius),
       ),
     );

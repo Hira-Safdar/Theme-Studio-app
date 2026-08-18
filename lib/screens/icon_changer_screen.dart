@@ -10,10 +10,6 @@ import '../widgets/disclosure_banner.dart';
 import '../widgets/icon_list_row.dart';
 import '../widgets/pack_selector.dart';
 
-/// Bundled (pre-made) icon packs -- matches assets/icon_packs/<id>/ folder
-/// structure. Ye teeno "edit" nahi ho sakte -- fixed/curated packs hain.
-const List<String> bundledIconPacks = IconMatchingService.bundledIconPacks;
-
 /// "Auto" -- koi bundled asset nahi, koi manual pick bhi nahi. Har
 /// installed app ka REAL icon leke native side par ek consistent shape +
 /// duotone color treatment apply hoti hai, taake har app apna unique icon
@@ -26,7 +22,7 @@ const String autoCategoryId = 'auto';
 const String customCategoryId = 'custom';
 
 /// Tab selector me dikhne wali poori list -- 3 bundled packs + Auto + Custom.
-const List<String> categoryTabs = [...bundledIconPacks, autoCategoryId, customCategoryId];
+const List<String> categoryTabs = [...IconMatchingService.bundledIconPacks, autoCategoryId, customCategoryId];
 
 String _categoryDisplayName(String id) {
   switch (id) {
@@ -86,6 +82,8 @@ class IconChangerScreen extends StatefulWidget {
 
 class _IconChangerScreenState extends State<IconChangerScreen> {
   String activeCategory = categoryTabs.first;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
 
   bool _loadingApps = true;
   List<AppEntry> _apps = [];
@@ -128,9 +126,15 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   /// split-and-concat use kiya hai (List.sort() stable guarantee nahi
   /// deta, isliye usse groups ke andar order badal sakta tha).
   List<AppEntry> get _sortedApps {
+    final q = _searchQuery.toLowerCase();
+    final filtered = q.isEmpty
+        ? _apps
+        : _apps.where((a) =>
+            a.label.toLowerCase().contains(q) ||
+            a.packageName.toLowerCase().contains(q)).toList();
     final withIcon = <AppEntry>[];
     final withoutIcon = <AppEntry>[];
-    for (final app in _apps) {
+    for (final app in filtered) {
       (_appHasIcon(app) ? withIcon : withoutIcon).add(app);
     }
     return [...withIcon, ...withoutIcon];
@@ -176,8 +180,14 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   /// khud generic fallback icon dikha deta hai.
   Future<void> _loadOldIcons() async {
     final results = await Future.wait(_apps.map((app) async {
-      final bytes = await NativeBridgeService.instance.getAppIcon(app.packageName);
-      return MapEntry(app.packageName, bytes);
+      try {
+        final bytes = await NativeBridgeService.instance
+            .getAppIcon(app.packageName)
+            .timeout(const Duration(seconds: 5));
+        return MapEntry(app.packageName, bytes);
+      } on TimeoutException {
+        return MapEntry(app.packageName, null);
+      }
     }));
     if (!mounted) return;
     setState(() {
@@ -268,6 +278,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   @override
   void dispose() {
     _autoDebounce?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -459,12 +470,45 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
+          if (!_loadingApps && _apps.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (v) => setState(() => _searchQuery = v),
+                decoration: InputDecoration(
+                  hintText: tr('search_apps_hint'),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: AppRadius.mdRadius,
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.bgSurfaceRaised,
+                ),
+              ),
+            ),
+          if (!_loadingApps && _apps.isNotEmpty)
+            const SizedBox(height: AppSpacing.sm),
           Expanded(
             child: _loadingApps
                 ? const Center(child: CircularProgressIndicator())
                 : _apps.isEmpty
                     ? const Center(child: Text('No installed apps found'))
-                    : ListView.builder(
+                    : _sortedApps.isEmpty
+                        ? Center(child: Text(tr('search_no_results')))
+                        : ListView.builder(
                         padding:
                             const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
                         itemCount: sortedApps.length,

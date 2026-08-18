@@ -123,7 +123,13 @@ object WidgetStyleHelper {
     fun scheduleNextTick(context: Context) {
         val alarmManager =
             context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val triggerAt = System.currentTimeMillis() + TICK_INTERVAL_MS
+        // Align to next minute boundary so widgets show current time, not 1 min behind
+        val calendar = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+            add(java.util.Calendar.MINUTE, 1)
+        }
+        val triggerAt = calendar.timeInMillis
         val pendingIntent = tickPendingIntent(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)

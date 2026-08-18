@@ -102,8 +102,13 @@ class NativeBridgeService {
 
   Future<bool> isPinShortcutSupported() async {
     if (!Platform.isAndroid) return false;
-    final result = await _channel.invokeMethod<bool>('isPinShortcutSupported');
-    return result ?? false;
+    try {
+      final result = await _channel.invokeMethod<bool>('isPinShortcutSupported');
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('isPinShortcutSupported failed: ${e.message}');
+      return false;
+    }
   }
 
   /// Device par jitni bhi "launchable" apps installed hain unki real list
@@ -346,10 +351,16 @@ class NativeBridgeService {
   /// Apna khud ka custom widget (Battery/Clock/Weather/Calendar/Notes)
   /// Home Screen par pin karne ki request bhejta hai. Style/mode bhi
   /// saath bhejte hain taake pinned widget turant sahi look mein dikhe.
+  /// [fontSize], [textColorHex], [bgOpacity], [cornerRadius] customization
+  /// params bhi saath jaate hain taake native side unhe apply kar sake.
   Future<bool> requestPinWidget({
     required String widgetType,
     required String style,
     required String mode,
+    double? fontSize,
+    String? textColorHex,
+    double? bgOpacity,
+    double? cornerRadius,
   }) async {
     if (!Platform.isAndroid) return false;
     try {
@@ -357,6 +368,10 @@ class NativeBridgeService {
         'widgetType': widgetType,
         'style': style,
         'mode': mode,
+        if (fontSize != null) 'fontSize': fontSize,
+        if (textColorHex != null) 'textColor': textColorHex,
+        if (bgOpacity != null) 'bgOpacity': bgOpacity,
+        if (cornerRadius != null) 'cornerRadius': cornerRadius,
       });
       return result ?? false;
     } on PlatformException catch (e) {
@@ -388,6 +403,10 @@ class NativeBridgeService {
     required String widgetType,
     required String style,
     required String mode,
+    double? fontSize,
+    String? textColorHex,
+    double? bgOpacity,
+    double? cornerRadius,
   }) async {
     if (!Platform.isAndroid) return false;
     try {
@@ -395,11 +414,50 @@ class NativeBridgeService {
         'widgetType': widgetType,
         'style': style,
         'mode': mode,
+        if (fontSize != null) 'fontSize': fontSize,
+        if (textColorHex != null) 'textColor': textColorHex,
+        if (bgOpacity != null) 'bgOpacity': bgOpacity,
+        if (cornerRadius != null) 'cornerRadius': cornerRadius,
       });
       return result ?? false;
     } on PlatformException catch (e) {
       debugPrint('updateWidgetStyle failed: ${e.message}');
       return false;
+    }
+  }
+
+  // ---------------- WIDGET CUSTOMIZATION ----------------
+
+  Future<bool> saveWidgetCustomization({
+    required double fontSize,
+    required String textColorHex,
+    required double bgOpacity,
+    required double cornerRadius,
+  }) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('saveWidgetCustomization', {
+        'fontSize': fontSize,
+        'textColor': textColorHex,
+        'bgOpacity': bgOpacity,
+        'cornerRadius': cornerRadius,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('saveWidgetCustomization failed: ${e.message}');
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> getWidgetCustomization() async {
+    if (!Platform.isAndroid) return {};
+    try {
+      final result = await _channel.invokeMethod<Map<Object?, Object?>>('getWidgetCustomization');
+      if (result == null) return {};
+      return result.map((key, value) => MapEntry(key.toString(), value));
+    } on PlatformException catch (e) {
+      debugPrint('getWidgetCustomization failed: ${e.message}');
+      return {};
     }
   }
 

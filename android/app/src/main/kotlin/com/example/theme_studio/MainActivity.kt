@@ -782,21 +782,37 @@ class MainActivity : FlutterActivity() {
         }
 
         try {
+            Log.d("ThemeStudio", "createCustomIconShortcut: Starting for packageName=$packageName, appLabel=$appLabel, iconPath=$iconPath")
+
             val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
             if (launchIntent == null) {
+                Log.e("ThemeStudio", "createCustomIconShortcut: launchIntent is null for $packageName")
                 result.success(false)
                 return
             }
             launchIntent.action = Intent.ACTION_MAIN
 
-            val bitmap = BitmapFactory.decodeFile(iconPath)
-            if (bitmap == null) {
+            val iconFile = java.io.File(iconPath)
+            if (!iconFile.exists()) {
+                Log.e("ThemeStudio", "createCustomIconShortcut: Icon file does not exist: $iconPath")
                 result.success(false)
                 return
             }
+            Log.d("ThemeStudio", "createCustomIconShortcut: Icon file exists, size=${iconFile.length()} bytes")
+
+            val bitmap = BitmapFactory.decodeFile(iconPath)
+            if (bitmap == null) {
+                Log.e("ThemeStudio", "createCustomIconShortcut: BitmapFactory.decodeFile returned null for $iconPath")
+                result.success(false)
+                return
+            }
+            Log.d("ThemeStudio", "createCustomIconShortcut: Bitmap decoded successfully, ${bitmap.width}x${bitmap.height}")
             val customIcon = Icon.createWithBitmap(bitmap)
 
-            val shortcutId = "theme_studio_$packageName"
+            // Unique shortcut ID with icon path hash - ensures each icon change is treated as new pin
+            val iconHash = iconPath.hashCode().toString(16).replace("-", "n")
+            val shortcutId = "theme_studio_${packageName}_$iconHash"
+            Log.d("ThemeStudio", "createCustomIconShortcut: shortcutId=$shortcutId")
             val shortcut = ShortcutInfo.Builder(this, shortcutId)
                 .setShortLabel(appLabel)
                 .setLongLabel(appLabel)
@@ -804,30 +820,13 @@ class MainActivity : FlutterActivity() {
                 .setIntent(launchIntent)
                 .build()
 
-            // IMPORTANT: agar is ID ka shortcut PEHLE se hi pin ho chuka hai
-            // (jaise pehle Cartoon pack se), to requestPinShortcut() ko
-            // DOBARA call karna Home Screen par dikhne wale icon ko UPDATE
-            // NAHI karta -- zyada tar launchers isko "already pinned" treat
-            // karke ya to dialog dikhate hi nahi, ya dialog dikhate hain
-            // lekin asal pinned icon wahi purana rehta hai. Yehi wajah thi
-            // ke theme dobara apply karne par sab shortcuts hamesha
-            // PEHLE wale pack ka (jaise Cartoon) icon dikhate rehte the,
-            // chahe user ne Flat Colors ya Dark Mode select kiya ho.
-            //
-            // Fix: already-pinned shortcuts ke liye updateShortcuts() sahi
-            // API hai -- ye TURANT Home Screen par pinned icon/label
-            // refresh kar deta hai, koi confirmation dialog ki zaroorat
-            // nahi (jaisa ke naya pin karne mein hoti hai).
+            // Check if this exact shortcut (same icon) is already pinned
             val pinnedShortcuts = shortcutManager.pinnedShortcuts
-            Log.d("ThemeStudio", "createCustomIconShortcut: Total pinned shortcuts: ${pinnedShortcuts.size}")
-            for (pinned in pinnedShortcuts) {
-                Log.d("ThemeStudio", "createCustomIconShortcut: Pinned shortcut ID: ${pinned.id}")
-            }
             val alreadyPinned = pinnedShortcuts.any { it.id == shortcutId }
-            Log.d("ThemeStudio", "createCustomIconShortcut: Looking for ID: $shortcutId, alreadyPinned: $alreadyPinned")
+            Log.d("ThemeStudio", "createCustomIconShortcut: Total pinned=${pinnedShortcuts.size}, alreadyPinned=$alreadyPinned")
             if (alreadyPinned) {
+                Log.d("ThemeStudio", "createCustomIconShortcut: $packageName shortcut already pinned with same icon, updating in place")
                 shortcutManager.updateShortcuts(listOf(shortcut))
-                Log.d("ThemeStudio", "createCustomIconShortcut: $packageName already pinned -- updated icon in place")
                 result.success(true)
                 return
             }
@@ -860,6 +859,7 @@ class MainActivity : FlutterActivity() {
 
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(context: Context, intent: Intent) {
+                    Log.d("ThemeStudio", "createCustomIconShortcut: Pin confirmation received for $packageName (shortcutId=$shortcutId)")
                     finish(true)
                 }
             }
@@ -873,7 +873,10 @@ class MainActivity : FlutterActivity() {
                 registerReceiver(receiver, filter)
             }
 
-            timeoutRunnable = Runnable { finish(false) }
+            timeoutRunnable = Runnable {
+                Log.w("ThemeStudio", "createCustomIconShortcut: Timeout waiting for pin confirmation for $packageName")
+                finish(false)
+            }
             handler.postDelayed(timeoutRunnable, PIN_SHORTCUT_TIMEOUT_MS)
 
             val callbackIntent = Intent(action).setPackage(applicationContext.packageName)
@@ -884,8 +887,11 @@ class MainActivity : FlutterActivity() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
+            Log.d("ThemeStudio", "createCustomIconShortcut: Calling requestPinShortcut for $packageName with shortcutId=$shortcutId")
             shortcutManager.requestPinShortcut(shortcut, pendingIntent.intentSender)
+            Log.d("ThemeStudio", "createCustomIconShortcut: requestPinShortcut returned for $packageName")
         } catch (e: Exception) {
+            Log.e("ThemeStudio", "createCustomIconShortcut: Exception: ${e.message}", e)
             e.printStackTrace()
             result.success(false)
         }

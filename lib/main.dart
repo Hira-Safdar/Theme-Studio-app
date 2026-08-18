@@ -8,8 +8,10 @@ import 'screens/settings_screen.dart';
 import 'screens/notes_editor_screen.dart';
 import 'screens/weather_location_screen.dart';
 import 'services/app_strings.dart';
+import 'services/favorites_service.dart';
 import 'services/locale_controller.dart';
 import 'services/native_bridge_service.dart';
+import 'services/theme_mode_controller.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 
@@ -34,11 +36,9 @@ class _ThemeStudioAppState extends State<ThemeStudioApp> {
   @override
   void initState() {
     super.initState();
-    // Pehle se saved language load karo -- LocaleController khud
-    // notifyListeners() call karega jab load complete ho, jo neeche wale
-    // ListenableBuilder ko rebuild trigger kar dega (English se saved
-    // language pe switch, agar kuch aur save tha).
     LocaleController.instance.load();
+    ThemeModeController.instance.load();
+    FavoritesService.instance.load();
 
     // Native (MainActivity.onNewIntent) se "openNotesEditor" call sunte
     // hain -- ye sirf tab aata hai jab Notes widget ka fallback-editor
@@ -59,25 +59,25 @@ class _ThemeStudioAppState extends State<ThemeStudioApp> {
 
   @override
   Widget build(BuildContext context) {
-    // Poora app isi ek listener ke andar hai -- jab bhi language badle,
-    // LocaleController.notifyListeners() se ye poora tree rebuild ho jata
-    // hai, isliye har screen ka tr(...) turant naya text dikhata hai,
-    // koi individual screen ko khud LocaleController sunne ki zarurat
-    // nahi (app is chhoti hai, poora tree rebuild karna sasta hai).
     return ListenableBuilder(
-      listenable: LocaleController.instance,
-      builder: (context, _) => MaterialApp(
-        navigatorKey: navigatorKey,
-        theme: AppTheme.themeData,
-        initialRoute: '/',
-        routes: {
-          '/': (context) => const SplashScreen(),
-          '/home': (context) => const RootShell(),
-          '/settings': (context) => const SettingsScreen(),
-          '/notes_editor': (context) => const NotesEditorScreen(),
-          '/weather_location': (context) => const WeatherLocationScreen(),
-        },
-      ),
+      listenable: Listenable.merge([LocaleController.instance, ThemeModeController.instance]),
+      builder: (context, _) {
+        final themeMode = ThemeModeController.instance.themeMode;
+        return MaterialApp(
+          navigatorKey: navigatorKey,
+          theme: AppTheme.lightThemeData,
+          darkTheme: AppTheme.darkThemeData,
+          themeMode: themeMode,
+          initialRoute: '/',
+          routes: {
+            '/': (context) => const SplashScreen(),
+            '/home': (context) => const RootShell(),
+            '/settings': (context) => const SettingsScreen(),
+            '/notes_editor': (context) => const NotesEditorScreen(),
+            '/weather_location': (context) => const WeatherLocationScreen(),
+          },
+        );
+      },
     );
   }
 }

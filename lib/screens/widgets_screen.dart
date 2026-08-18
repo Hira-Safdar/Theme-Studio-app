@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../widgets/pack_selector.dart';
+import '../widgets/widget_preview_card.dart' show WidgetPinStatus;
 import '../services/app_strings.dart';
 import '../services/native_bridge_service.dart';
 import 'notes_editor_screen.dart';
@@ -57,6 +58,23 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
   String _style = widgetStyleOptions.first;
   String _mode = widgetModeOptions.first;
 
+  // Widget customization params -- font size, text color, bg opacity, corner
+  // radius. Defaults are chosen to match the existing minimal dark style.
+  double _widgetFontSize = 16.0;
+  Color _widgetTextColor = Colors.white;
+  double _widgetBgOpacity = 0.85;
+  double _widgetCornerRadius = 12.0;
+  bool _customizationLoaded = false;
+
+  static const List<Color> _textColorPresets = [
+    Colors.white,
+    Color(0xFF1A1A1A),
+    Color(0xFF00FFF0),
+    Color(0xFFFF7A59),
+    Color(0xFF8B7CFF),
+    Color(0xFF4FD8B8),
+  ];
+
   // Har widget type ke live pinned-instance count -- AppWidgetManager se
   // aata hai, isliye add/remove (Home Screen se seedha remove kiya gaya
   // ho tab bhi) dono khud-ba-khud sahi reflect hote hain jab bhi refresh
@@ -91,6 +109,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
     _refreshNoteText();
     _initWeatherLocation();
     _refreshPinnedCounts();
+    _loadCustomization();
   }
 
   @override
@@ -129,6 +148,27 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
     final counts = await NativeBridgeService.instance.getPinnedWidgetCounts();
     if (!mounted) return;
     setState(() => _pinnedCounts = counts);
+  }
+
+  Future<void> _loadCustomization() async {
+    final data = await NativeBridgeService.instance.getWidgetCustomization();
+    if (!mounted) return;
+    setState(() {
+      _widgetFontSize = (data['fontSize'] as num?)?.toDouble() ?? 16.0;
+      _widgetTextColor = Color((data['textColor'] as num?)?.toInt() ?? Colors.white.toARGB32());
+      _widgetBgOpacity = (data['bgOpacity'] as num?)?.toDouble() ?? 0.85;
+      _widgetCornerRadius = (data['cornerRadius'] as num?)?.toDouble() ?? 12.0;
+      _customizationLoaded = true;
+    });
+  }
+
+  Future<void> _saveCustomization() async {
+    await NativeBridgeService.instance.saveWidgetCustomization(
+      fontSize: _widgetFontSize,
+      textColorHex: '#${_widgetTextColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+      bgOpacity: _widgetBgOpacity,
+      cornerRadius: _widgetCornerRadius,
+    );
   }
 
   /// Android koi public API nahi deta jisse ek app apne khud ke pinned
@@ -209,6 +249,10 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
         widgetType: widgetType,
         style: _style,
         mode: _mode,
+        fontSize: _widgetFontSize,
+        textColorHex: '#${_widgetTextColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+        bgOpacity: _widgetBgOpacity,
+        cornerRadius: _widgetCornerRadius,
       );
 
       if (!mounted) return;
@@ -242,11 +286,16 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
     final pinnedTypes = _status.entries
         .where((e) => e.value == WidgetPinStatus.pinned)
         .map((e) => e.key);
+    final textColorHex = '#${_widgetTextColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
     for (final widgetType in pinnedTypes) {
       await NativeBridgeService.instance.updateWidgetStyle(
         widgetType: widgetType,
         style: _style,
         mode: _mode,
+        fontSize: _widgetFontSize,
+        textColorHex: textColorHex,
+        bgOpacity: _widgetBgOpacity,
+        cornerRadius: _widgetCornerRadius,
       );
     }
   }
@@ -308,6 +357,138 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
+
+          // Widget customization controls -- font size, text color,
+          // background opacity, corner radius. These params are persisted
+          // via SharedPreferences and passed to native side on pin/update.
+          if (_customizationLoaded) ...[
+            _LabeledControl(
+              label: tr('widget_font_size'),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      value: _widgetFontSize,
+                      min: 12,
+                      max: 32,
+                      divisions: 20,
+                      label: _widgetFontSize.round().toString(),
+                      onChanged: (v) {
+                        setState(() => _widgetFontSize = v);
+                        _saveCustomization();
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      '${_widgetFontSize.round()}',
+                      style: AppTypography.bodySecondary,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _LabeledControl(
+              label: tr('widget_text_color'),
+              child: Row(
+                children: _textColorPresets.map((color) {
+                  final isSelected = color.toARGB32() == _widgetTextColor.toARGB32();
+                  return Padding(
+                    padding: const EdgeInsets.only(right: AppSpacing.sm),
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() => _widgetTextColor = color);
+                        _saveCustomization();
+                      },
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected ? AppColors.textPrimary : AppColors.bgSurfaceRaised,
+                            width: 2,
+                          ),
+                        ),
+                        child: isSelected
+                            ? Icon(
+                                Icons.check,
+                                size: 14,
+                                color: color.toARGB32() == Colors.white.toARGB32()
+                                    ? Colors.black87
+                                    : Colors.white,
+                              )
+                            : null,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _LabeledControl(
+              label: tr('widget_bg_opacity'),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      value: _widgetBgOpacity,
+                      min: 0,
+                      max: 1,
+                      divisions: 20,
+                      label: '${(_widgetBgOpacity * 100).round()}%',
+                      onChanged: (v) {
+                        setState(() => _widgetBgOpacity = v);
+                        _saveCustomization();
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 40,
+                    child: Text(
+                      '${(_widgetBgOpacity * 100).round()}%',
+                      style: AppTypography.bodySecondary,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _LabeledControl(
+              label: tr('widget_corner_radius'),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      value: _widgetCornerRadius,
+                      min: 0,
+                      max: 24,
+                      divisions: 12,
+                      label: _widgetCornerRadius.round().toString(),
+                      onChanged: (v) {
+                        setState(() => _widgetCornerRadius = v);
+                        _saveCustomization();
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      '${_widgetCornerRadius.round()}',
+                      style: AppTypography.bodySecondary,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ],
 
           // 2-column grid of compact cards — same info as before (preview +
           // name + pin action), just far less vertical scroll than five
@@ -613,8 +794,6 @@ class _PinPill extends StatelessWidget {
     }
   }
 }
-
-enum WidgetPinStatus { idle, requesting, pinned }
 
 /// Live-rendered mini preview — demo values only (except Weather's location
 /// footnote and Notes' saved text, which are real). Real widget content

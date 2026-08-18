@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/theme_model.dart';
 import '../services/app_strings.dart';
+import '../services/favorites_service.dart';
 import '../services/theme_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/preset_theme_card.dart' show PresetCardStatus;
@@ -15,16 +16,20 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final controller = ThemeController.instance;
+  bool _showFavoritesOnly = false;
 
   @override
   void initState() {
     super.initState();
     controller.addListener(_onChange);
+    FavoritesService.instance.addListener(_onChange);
+    FavoritesService.instance.load();
   }
 
   @override
   void dispose() {
     controller.removeListener(_onChange);
+    FavoritesService.instance.removeListener(_onChange);
     super.dispose();
   }
 
@@ -51,10 +56,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final displayedThemes = _showFavoritesOnly
+        ? presetThemes.where((t) => FavoritesService.instance.isFavorite(t.id)).toList()
+        : presetThemes;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Theme studio'),
+        title: Text(tr('app_title')),
         actions: [
+          IconButton(
+            icon: Icon(
+              _showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
+              color: _showFavoritesOnly ? AppColors.error : null,
+            ),
+            tooltip: tr('favorites_filter'),
+            onPressed: () => setState(() => _showFavoritesOnly = !_showFavoritesOnly),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
@@ -72,29 +89,40 @@ class _HomeScreenState extends State<HomeScreen> {
               0,
             ),
             child: Text(
-              tr('home_instruction'),
+              _showFavoritesOnly
+                  ? tr('favorites_empty')
+                  : tr('home_instruction'),
               style: AppTypography.bodySecondary,
             ),
           ),
           Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: AppSpacing.md,
-                mainAxisSpacing: AppSpacing.md,
-                childAspectRatio: 2 / 3,
-              ),
-              itemCount: presetThemes.length,
-              itemBuilder: (context, i) {
-                final theme = presetThemes[i];
-                return ThemeGridTile(
-                  theme: theme,
-                  status: _statusFor(theme),
-                  onTap: controller.isApplying ? null : () => _handleTap(theme),
-                );
-              },
-            ),
+            child: displayedThemes.isEmpty
+                ? Center(
+                    child: Text(
+                      tr('favorites_empty'),
+                      style: AppTypography.bodySecondary,
+                    ),
+                  )
+                : GridView.builder(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: AppSpacing.md,
+                      mainAxisSpacing: AppSpacing.md,
+                      childAspectRatio: 2 / 3,
+                    ),
+                    itemCount: displayedThemes.length,
+                    itemBuilder: (context, i) {
+                      final theme = displayedThemes[i];
+                      return ThemeGridTile(
+                        theme: theme,
+                        status: _statusFor(theme),
+                        onTap: controller.isApplying ? null : () => _handleTap(theme),
+                        isFavorite: FavoritesService.instance.isFavorite(theme.id),
+                        onToggleFavorite: () => FavoritesService.instance.toggle(theme.id),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/app_strings.dart';
 import '../services/locale_controller.dart';
+import '../services/theme_mode_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/settings_row.dart';
 
 // TODO: replace with your real privacy policy URL once you have one hosted.
+// While the URL is still a placeholder, the "Privacy policy" row shows a
+// "coming soon" message instead of navigating to a broken page.
 const String _privacyPolicyUrl = 'https://example.com/theme-studio-privacy';
 
 // TODO: replace with your real Play Store applicationId once the app is
@@ -71,6 +74,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _openLink(Uri uri) async {
+    if (uri.host == 'example.com') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("This link will be available once the app is published")),
+        );
+      }
+      return;
+    }
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -82,6 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _openExplainer(String title, String body) {
     Navigator.of(context).push(
       MaterialPageRoute(
+        settings: RouteSettings(name: '/settings/explainer/${title.hashCode}'),
         builder: (context) => Scaffold(
           appBar: AppBar(title: Text(title)),
           body: Padding(
@@ -112,10 +124,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailingText: _languages[LocaleController.instance.languageCode],
                 onTap: _openLanguagePicker,
               ),
-              // Notifications option removed for now (deliberately) --
-              // no notification system exists yet, so a toggle here would
-              // control nothing. Re-add once there's an actual feature
-              // behind it.
+              ListenableBuilder(
+                listenable: ThemeModeController.instance,
+                builder: (context, _) => SettingsRow(
+                  icon: ThemeModeController.instance.isDark
+                      ? Icons.dark_mode
+                      : Icons.light_mode,
+                  label: tr('settings_dark_mode'),
+                  toggleValue: ThemeModeController.instance.isDark,
+                  onToggleChanged: (v) => ThemeModeController.instance.setDark(v),
+                ),
+              ),
             ],
           ),
           SettingsSectionHeader(label: tr('settings_section_help')),

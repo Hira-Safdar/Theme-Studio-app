@@ -52,24 +52,12 @@ class IconMatchingService {
   /// fallback icon hi dikhega jab tak assets/icon_packs/<pack>/<key>.png
   /// add na ki jaaye -- crash nahi hoga.
   static const Map<String, String> curatedPackageIconKeys = {
-    // Popular apps
-    'com.whatsapp': 'whatsapp',
-    'com.whatsapp.w4b': 'whatsapp',
-    'com.facebook.orca': 'messenger',
-    'com.facebook.katana': 'facebook',
-    'com.facebook.lite': 'facebook',
-    'com.instagram.android': 'instagram',
-    'com.google.android.youtube': 'youtube',
-    'org.telegram.messenger': 'telegram',
-    'com.google.android.gm': 'gmail',
-    'com.snapchat.android': 'snapchat',
-    'com.zhiliaoapp.musically': 'tiktok',
-    'com.ss.android.ugc.trill': 'tiktok',
-    'com.twitter.android': 'x',
-    'com.spotify.music': 'spotify',
-    'com.netflix.mediaclient': 'netflix',
-
-    // Samsung system apps (common on Samsung devices/emulators)
+    // System apps -- their keys all have bundled PNG assets in
+    // assets/icon_packs/<pack>/. Third-party apps (WhatsApp, Instagram,
+    // etc.) are deliberately excluded because we don't ship unique icons
+    // for them -- they fall through to keyword-based category matching
+    // (guessKeywordIconKey) instead, which maps them to the closest
+    // bundled category (browser, camera, etc.).
     'com.samsung.android.messaging': 'messages',
     'com.samsung.android.app.contacts': 'contacts',
     'com.samsung.android.gallery3d': 'gallery',

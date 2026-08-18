@@ -1,43 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/scroll_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
     android:background="#E6121212">
 
     <LinearLayout
+        android:id="@+id/content_root"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Header row: title + close -->
-        <RelativeLayout
-            android:layout_width="match_parent"
+        <!-- Header: title (also swipe-up to close) -->
+        <TextView
+            android:id="@+id/header_text"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
-                android:text="Control Center"
-                android:textColor="#00FFF0"
-                android:textSize="20sp"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/btn_close"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:layout_alignParentEnd="true"
-                android:background="#33FFFFFF"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:text="Close"
-                android:textColor="#FFFFFF"
-                android:textSize="12sp" />
-        </RelativeLayout>
+            android:layout_marginBottom="16dp"
+            android:text="Control Center"
+            android:textColor="#00FFF0"
+            android:textSize="20sp"
+            android:textStyle="bold" />
 
         <!-- Quick toggles row 1: WiFi + Bluetooth -->
         <LinearLayout
@@ -47,16 +32,26 @@
             android:orientation="horizontal">
 
             <LinearLayout
+                android:id="@+id/btn_wifi"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="120dp"
                 android:layout_weight="1"
                 android:background="#22FFFFFF"
+                android:clickable="true"
+                android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:padding="12dp">
 
-                <Switch
-                    android:id="@+id/switch_wifi"
+                <ImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_marginBottom="8dp"
+                    android:src="@drawable/ic_wifi"
+                    android:contentDescription="WiFi"
+                    android:tint="#00FFF0" />
+
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="WiFi"
@@ -71,7 +66,7 @@
             <LinearLayout
                 android:id="@+id/btn_bluetooth"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="120dp"
                 android:layout_weight="1"
                 android:background="#22FFFFFF"
                 android:clickable="true"
@@ -79,6 +74,14 @@
                 android:gravity="center"
                 android:orientation="vertical"
                 android:padding="12dp">
+
+                <ImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_marginBottom="8dp"
+                    android:src="@drawable/ic_bluetooth"
+                    android:contentDescription="Bluetooth"
+                    android:tint="#4488FF" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -97,16 +100,26 @@
             android:orientation="horizontal">
 
             <LinearLayout
+                android:id="@+id/btn_flashlight"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="120dp"
                 android:layout_weight="1"
                 android:background="#22FFFFFF"
+                android:clickable="true"
+                android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:padding="12dp">
 
-                <Switch
-                    android:id="@+id/switch_flashlight"
+                <ImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_marginBottom="8dp"
+                    android:src="@drawable/ic_flashlight"
+                    android:contentDescription="Flashlight"
+                    android:tint="#FFCC00" />
+
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Flashlight"
@@ -121,7 +134,7 @@
             <LinearLayout
                 android:id="@+id/btn_settings"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="120dp"
                 android:layout_weight="1"
                 android:background="#22FFFFFF"
                 android:clickable="true"
@@ -129,6 +142,14 @@
                 android:gravity="center"
                 android:orientation="vertical"
                 android:padding="12dp">
+
+                <ImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_marginBottom="8dp"
+                    android:src="@drawable/ic_settings"
+                    android:contentDescription="Settings"
+                    android:tint="#AAAAAA" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -139,14 +160,29 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Brightness slider -->
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Brightness slider with icon -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
-            android:text="Brightness"
-            android:textColor="#AAAAAA"
-            android:textSize="12sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="8dp"
+                android:src="@android:drawable/ic_menu_view"
+                android:contentDescription="Brightness"
+                android:tint="#FFCC00" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Brightness"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp" />
+        </LinearLayout>
 
         <SeekBar
             android:id="@+id/seekbar_brightness"
@@ -158,14 +194,29 @@
             android:progressTint="#00FFF0"
             android:thumbTint="#00FFF0" />
 
-        <!-- Volume slider -->
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Volume slider with icon -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
-            android:text="Volume"
-            android:textColor="#AAAAAA"
-            android:textSize="12sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="8dp"
+                android:src="@android:drawable/ic_lock_silent_mode_off"
+                android:contentDescription="Volume"
+                android:tint="#00FFF0" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Volume"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp" />
+        </LinearLayout>
 
         <SeekBar
             android:id="@+id/seekbar_volume"
@@ -175,5 +226,15 @@
             android:progress="7"
             android:progressTint="#00FFF0"
             android:thumbTint="#00FFF0" />
+
+        <!-- Swipe up hint -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:text="↑ Swipe up to close"
+            android:textColor="#55FFFFFF"
+            android:textSize="11sp" />
     </LinearLayout>
 </ScrollView>
