@@ -1,10 +1,6 @@
 import 'icon_pack_service.dart';
 import 'native_bridge_service.dart';
 
-/// Ek app entry: package name, label, aur icon-pack lookup ke liye keyword.
-/// [iconKey] nullable hai -- device par installed har app hamare 10
-/// bundled categories (browser/calculator/...) mein fit nahi hoti, aisi
-/// apps ke liye bundled tabs par sirf generic fallback icon dikhega.
 class AppEntry {
   final String packageName;
   final String label;
@@ -45,12 +41,6 @@ class IconMatchingService {
   /// etc.) ko unka apna distinct iconKey milta hai, generic category-guess
   /// ki wajah se ek jaisa shared icon nahi milta. Ye check hamesha
   /// keyword-guess se PEHLE hota hai.
-  ///
-  /// NOTE -- asset status: filhaal sirf 10 keys ke PNGs bundled hain
-  /// (browser/calculator/calendar/camera/clock/contacts/gallery/messages/
-  /// phone/settings). Neeche wale naye keys ke liye tab tak generic
-  /// fallback icon hi dikhega jab tak assets/icon_packs/<pack>/<key>.png
-  /// add na ki jaaye -- crash nahi hoga.
   static const Map<String, String> curatedPackageIconKeys = {
     // System apps -- their keys all have bundled PNG assets in
     // assets/icon_packs/<pack>/. Third-party apps (WhatsApp, Instagram,

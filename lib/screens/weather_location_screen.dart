@@ -161,7 +161,7 @@ class _WeatherLocationScreenState extends State<WeatherLocationScreen> {
           // Home Screen.
           Container(
             padding: const EdgeInsets.all(AppSpacing.cardPadding),
-            decoration: AppElevation.level1(radius: AppRadius.mdRadius),
+            decoration: AppTheme.level1(context, radius: AppRadius.mdRadius),
             child: _loadingCurrent
                 ? const Center(
                     child: Padding(
@@ -171,8 +171,8 @@ class _WeatherLocationScreenState extends State<WeatherLocationScreen> {
                   )
                 : Row(
                     children: [
-                      const Icon(Icons.location_on_outlined,
-                          color: AppColors.accentPrimary, size: 28),
+                       Icon(Icons.location_on_outlined,
+                           color: AppTheme.accentPrimary(context), size: 28),
                       const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
@@ -210,7 +210,7 @@ class _WeatherLocationScreenState extends State<WeatherLocationScreen> {
                 horizontal: AppSpacing.cardPadding,
                 vertical: AppSpacing.sm,
               ),
-              decoration: AppElevation.level1(radius: AppRadius.mdRadius),
+              decoration: AppTheme.level1(context, radius: AppRadius.mdRadius),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -253,7 +253,7 @@ class _WeatherLocationScreenState extends State<WeatherLocationScreen> {
                   return Container(
                     width: 64,
                     padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                    decoration: AppElevation.level1(radius: AppRadius.mdRadius),
+                    decoration: AppTheme.level1(context, radius: AppRadius.mdRadius),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
@@ -264,7 +264,7 @@ class _WeatherLocationScreenState extends State<WeatherLocationScreen> {
                         Icon(
                           _iconForCondition(hour['condition']),
                           size: 20,
-                          color: AppColors.accentPrimary,
+                          color: AppTheme.accentPrimary(context),
                         ),
                         Text(hour['temp'] ?? '--°', style: AppTypography.body),
                       ],
@@ -304,10 +304,10 @@ class _WeatherLocationScreenState extends State<WeatherLocationScreen> {
                         )
                       : null),
               filled: true,
-              fillColor: AppColors.bgSurface,
+              fillColor: AppTheme.surface(context),
               border: OutlineInputBorder(
                 borderRadius: AppRadius.smRadius,
-                borderSide: const BorderSide(color: AppColors.borderSubtle),
+                borderSide: BorderSide(color: AppTheme.borderSubtle(context)),
               ),
             ),
           ),
@@ -327,7 +327,7 @@ class _WeatherLocationScreenState extends State<WeatherLocationScreen> {
             ..._results.map(
               (r) => Container(
                 margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                decoration: AppElevation.level1(radius: AppRadius.mdRadius),
+                decoration: AppTheme.level1(context, radius: AppRadius.mdRadius),
                 child: ListTile(
                   shape: RoundedRectangleBorder(borderRadius: AppRadius.mdRadius),
                   leading: const Icon(Icons.place_outlined),
@@ -359,7 +359,7 @@ class _WeatherStat extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 18, color: AppColors.accentPrimary),
+        Icon(icon, size: 18, color: AppTheme.accentPrimary(context)),
         const SizedBox(height: 4),
         Text(value, style: AppTypography.body),
         const SizedBox(height: 2),

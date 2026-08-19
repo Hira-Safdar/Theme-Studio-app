@@ -78,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgBase,
+      backgroundColor: AppTheme.scaffoldBg(context),
       body: SafeArea(
         top: false,
         bottom: false,
@@ -126,7 +126,7 @@ class _AppMark extends StatelessWidget {
       width: 96,
       height: 96,
       decoration: BoxDecoration(
-        color: AppColors.bgSurfaceRaised,
+        color: AppTheme.surfaceRaised(context),
         borderRadius: AppRadius.lgRadius,
       ),
       child: Center(
@@ -138,17 +138,17 @@ class _AppMark extends StatelessWidget {
               Positioned(
                 left: 0,
                 top: 4,
-                child: _glyphSquare(opacity: 0.3),
+                child: _glyphSquare(context: context, opacity: 0.3),
               ),
               Positioned(
                 left: 6,
                 top: 0,
-                child: _glyphSquare(opacity: 0.6),
+                child: _glyphSquare(context: context, opacity: 0.6),
               ),
               Positioned(
                 left: 8,
                 top: 2,
-                child: _glyphSquare(opacity: 1.0, size: 20, radius: 7),
+                child: _glyphSquare(context: context, opacity: 1.0, size: 20, radius: 7),
               ),
             ],
           ),
@@ -158,6 +158,7 @@ class _AppMark extends StatelessWidget {
   }
 
   Widget _glyphSquare({
+    required BuildContext context,
     required double opacity,
     double size = 24,
     double radius = 8,
@@ -166,7 +167,7 @@ class _AppMark extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: AppColors.accentPrimary.withValues(alpha: opacity),
+        color: AppTheme.accentPrimary(context).withValues(alpha: opacity),
         borderRadius: BorderRadius.circular(radius),
       ),
     );
@@ -192,7 +193,7 @@ class _IndeterminateProgressBar extends StatelessWidget {
         height: 2,
         child: Stack(
           children: [
-            Container(color: AppColors.borderSubtle),
+            Container(color: AppTheme.borderSubtle(context)),
             AnimatedBuilder(
               animation: controller,
               builder: (context, child) {
@@ -204,7 +205,7 @@ class _IndeterminateProgressBar extends StatelessWidget {
                   top: 0,
                   bottom: 0,
                   width: fillWidth,
-                  child: Container(color: AppColors.accentPrimary),
+                  child: Container(color: AppTheme.accentPrimary(context)),
                 );
               },
             ),

@@ -31,7 +31,7 @@ class WidgetPreviewCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),
       padding: const EdgeInsets.all(AppSpacing.cardPadding),
-      decoration: AppElevation.level1(radius: AppRadius.lgRadius),
+      decoration: AppTheme.level1(context, radius: AppRadius.lgRadius),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -66,10 +66,7 @@ class WidgetPreviewCard extends StatelessWidget {
               SizedBox(
                 width: 16,
                 height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation(AppColors.textSecondary),
-                ),
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
               SizedBox(width: AppSpacing.sm),
               Text('Waiting for confirmation…'),

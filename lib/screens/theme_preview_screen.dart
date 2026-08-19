@@ -1,21 +1,9 @@
-// lib/screens/theme_preview_screen.dart
-//
-// Preview-before-apply screen for preset Themes (Home screen) -- same
-// phone-frame pattern as WallpaperPreviewScreen, so the whole app has one
-// consistent "see it before you commit" experience: Wallpaper screen shows
-// the wallpaper, this screen shows the wallpaper PLUS a few real sample
-// icons from the theme's icon pack, so the user knows what they're
-// actually applying.
-
 import 'package:flutter/material.dart';
 import '../models/theme_model.dart';
 import '../services/icon_pack_service.dart';
 import '../services/theme_controller.dart';
 import '../theme/app_theme.dart';
 
-/// Common icon keys we know exist across bundled packs (same set used for
-/// the Icon Changer demo rows) -- used to show a realistic sample strip
-/// without depending on every pack having every icon finished yet.
 const List<String> _previewIconKeys = ['browser', 'calculator', 'camera', 'clock'];
 
 class ThemePreviewScreen extends StatefulWidget {
@@ -23,8 +11,6 @@ class ThemePreviewScreen extends StatefulWidget {
 
   final ThemeModel theme;
 
-  /// Returns true if the user applied the theme, false/null if they
-  /// cancelled/closed the preview without applying.
   static Future<bool?> show(BuildContext context, ThemeModel theme) {
     return Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => ThemePreviewScreen(theme: theme)),
@@ -66,7 +52,6 @@ class _ThemePreviewScreenState extends State<ThemePreviewScreen> {
     final themeName = widget.theme.name;
     setState(() => _applying = false);
 
-    // Show SnackBar before popping to avoid BuildContext async gap
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -93,7 +78,7 @@ class _ThemePreviewScreenState extends State<ThemePreviewScreen> {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.bgSurfaceRaised,
+        backgroundColor: AppTheme.surfaceRaised(context),
         shape: RoundedRectangleBorder(borderRadius: AppRadius.lgRadius),
         title: Text('$themeName — what failed', style: AppTypography.heading),
         content: SizedBox(
@@ -101,11 +86,11 @@ class _ThemePreviewScreenState extends State<ThemePreviewScreen> {
           child: ListView.separated(
             shrinkWrap: true,
             itemCount: errors.length,
-            separatorBuilder: (_, __) => const Divider(color: AppColors.borderSubtle, height: AppSpacing.lg),
+            separatorBuilder: (_, __) => Divider(color: AppTheme.borderSubtle(context), height: AppSpacing.lg),
             itemBuilder: (context, i) => Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.error_outline, size: 16, color: AppColors.error),
+                Icon(Icons.error_outline, size: 16, color: AppTheme.error(context)),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(child: Text(errors[i], style: AppTypography.bodySecondary)),
               ],
@@ -125,7 +110,7 @@ class _ThemePreviewScreenState extends State<ThemePreviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgBase,
+      backgroundColor: AppTheme.scaffoldBg(context),
       appBar: AppBar(
         title: Text(widget.theme.name),
         leading: IconButton(
@@ -161,8 +146,8 @@ class _ThemePreviewScreenState extends State<ThemePreviewScreen> {
                 ],
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
                 AppSpacing.screenPadding,
                 AppSpacing.sm,
                 AppSpacing.screenPadding,
@@ -171,9 +156,9 @@ class _ThemePreviewScreenState extends State<ThemePreviewScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.info_outline, size: 16, color: AppColors.accentPrimary),
-                  SizedBox(width: AppSpacing.sm),
-                  Expanded(
+                  Icon(Icons.info_outline, size: 16, color: AppTheme.accentPrimary(context)),
+                  const SizedBox(width: AppSpacing.sm),
+                  const Expanded(
                     child: Text(
                       'Applying will also request Home Screen shortcuts for every '
                       'matching app. Android confirms each shortcut separately, so '
@@ -242,15 +227,6 @@ class _ThemePhoneFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Same fix as WallpaperPreviewScreen's _PhoneFrame: horizontal spacing
-    // has to be a Padding OUTSIDE AspectRatio, not a margin on the Container
-    // inside it. AspectRatio sizes the box first from the 9:19.5 ratio, so a
-    // margin applied afterward just shrinks the rendered box without the
-    // ratio adjusting -- the frame ends up narrower than intended relative
-    // to its height (too tall / not wide enough). Padding here means
-    // AspectRatio computes the ratio AFTER the horizontal space is already
-    // accounted for, and the maxWidth keeps it from overstretching on
-    // larger screens.
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 300),
@@ -261,7 +237,7 @@ class _ThemePhoneFrame extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: AppColors.borderFocus, width: 6),
+                border: Border.all(color: AppTheme.borderFocus(context), width: 6),
               ),
               clipBehavior: Clip.antiAlias,
               child: Stack(
@@ -271,9 +247,8 @@ class _ThemePhoneFrame extends StatelessWidget {
                     theme.wallpaperAssetPath,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) =>
-                        Container(color: AppColors.bgSurfaceRaised),
+                        Container(color: AppTheme.surfaceRaised(context)),
                   ),
-                  // Dummy status bar -- for judging legibility, not functional.
                   const Positioned(
                     top: 0,
                     left: 0,
@@ -310,9 +285,6 @@ class _ThemePhoneFrame extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Real sample icons from THIS theme's icon pack -- unlike the
-                  // generic wallpaper preview's blank squares, these show what
-                  // the icon pack actually looks like against this wallpaper.
                   Positioned(
                     left: 0,
                     right: 0,

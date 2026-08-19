@@ -53,17 +53,17 @@ class IconListRow extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: isFailed
-            ? AppColors.error.withValues(alpha: 0.08)
-            : AppColors.bgSurface,
+            ? AppTheme.error(context).withValues(alpha: 0.08)
+            : AppTheme.surface(context),
         borderRadius: AppRadius.mdRadius,
-        border: isFailed ? Border.all(color: AppColors.error) : null,
+        border: isFailed ? Border.all(color: AppTheme.error(context)) : null,
       ),
       child: Row(
         children: [
           Checkbox(
             value: isSelected,
             onChanged: onToggleSelected,
-            activeColor: AppColors.accentPrimary,
+            activeColor: AppTheme.accentPrimary(context),
           ),
           _IconTransitionGroup(
             oldIconBytes: oldIconBytes,
@@ -89,7 +89,7 @@ class IconListRow extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.photo_library_outlined),
               tooltip: 'Pick custom icon for $label',
-              color: AppColors.textSecondary,
+              color: AppTheme.textSecondary(context),
               onPressed: status == IconRowStatus.applying ? null : onPickCustomIcon,
             ),
           _ApplyButton(status: status, onPressed: onApply),
@@ -115,29 +115,29 @@ class _IconTransitionGroup extends StatelessWidget {
   final bool newIconIsFile;
   final bool hasCustomIcon;
 
-  Widget _buildFallback() =>
-      const Icon(Icons.android, color: AppColors.textSecondary, size: 22);
+  Widget _buildFallback(BuildContext context) =>
+      Icon(Icons.android, color: AppTheme.textSecondary(context), size: 22);
 
-  Widget _oldIconWidget() {
-    if (oldIconBytes == null) return _buildFallback();
+  Widget _oldIconWidget(BuildContext context) {
+    if (oldIconBytes == null) return _buildFallback(context);
     return Image.memory(
       oldIconBytes!,
       width: 40,
       height: 40,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => _buildFallback(),
+      errorBuilder: (_, __, ___) => _buildFallback(context),
     );
   }
 
-  Widget _newIconWidget() {
-    if (newIconPath.isEmpty) return _buildFallback();
+  Widget _newIconWidget(BuildContext context) {
+    if (newIconPath.isEmpty) return _buildFallback(context);
     if (newIconIsFile) {
       return Image.file(
         File(newIconPath),
         width: 40,
         height: 40,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _buildFallback(),
+        errorBuilder: (_, __, ___) => _buildFallback(context),
       );
     }
     return Image.asset(
@@ -145,15 +145,15 @@ class _IconTransitionGroup extends StatelessWidget {
       width: 40,
       height: 40,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => _buildFallback(),
+      errorBuilder: (_, __, ___) => _buildFallback(context),
     );
   }
 
-  Widget _iconBox(Widget child) => Container(
+  Widget _iconBox(BuildContext context, Widget child) => Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: AppColors.bgSurfaceRaised,
+          color: AppTheme.surfaceRaised(context),
           borderRadius: AppRadius.mdRadius,
         ),
         clipBehavior: Clip.antiAlias,
@@ -168,11 +168,11 @@ class _IconTransitionGroup extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _iconBox(_oldIconWidget()),
+            _iconBox(context, _oldIconWidget(context)),
             const SizedBox(width: 4),
-            const Icon(Icons.arrow_forward, size: 16, color: AppColors.textSecondary),
+            Icon(Icons.arrow_forward, size: 16, color: AppTheme.textSecondary(context)),
             const SizedBox(width: 4),
-            _iconBox(_newIconWidget()),
+            _iconBox(context, _newIconWidget(context)),
           ],
         ),
         if (hasCustomIcon)
@@ -182,8 +182,8 @@ class _IconTransitionGroup extends StatelessWidget {
             child: Container(
               width: 16,
               height: 16,
-              decoration: const BoxDecoration(
-                color: AppColors.accentPrimary,
+              decoration: BoxDecoration(
+                color: AppTheme.accentPrimary(context),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.edit, size: 10, color: Color(0xFF00201E)),
@@ -202,23 +202,23 @@ class _ApplyButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (status == IconRowStatus.applying) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
         child: SizedBox(
           width: 18,
           height: 18,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation(AppColors.accentPrimary),
+            valueColor: AlwaysStoppedAnimation(AppTheme.accentPrimary(context)),
           ),
         ),
       );
     }
 
     if (status == IconRowStatus.applied) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-        child: Icon(Icons.check_circle, color: AppColors.success),
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        child: Icon(Icons.check_circle, color: AppTheme.success(context)),
       );
     }
 
@@ -227,8 +227,8 @@ class _ApplyButton extends StatelessWidget {
       onPressed: onPressed,
       style: isFailed
           ? FilledButton.styleFrom(
-              backgroundColor: AppColors.error.withValues(alpha: 0.15),
-              foregroundColor: AppColors.error,
+              backgroundColor: AppTheme.error(context).withValues(alpha: 0.15),
+              foregroundColor: AppTheme.error(context),
             )
           : null,
       child: Text(isFailed ? 'Retry' : 'Apply'),

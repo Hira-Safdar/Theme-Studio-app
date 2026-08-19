@@ -24,7 +24,7 @@ class AccessibilityStatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.cardPadding),
-      decoration: AppElevation.level1(radius: AppRadius.lgRadius),
+      decoration: AppTheme.level1(context, radius: AppRadius.lgRadius),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -38,7 +38,7 @@ class AccessibilityStatusCard extends StatelessWidget {
                   width: 10,
                   height: 10,
                   decoration: BoxDecoration(
-                    color: enabled ? AppColors.success : AppColors.warning,
+                    color: enabled ? AppTheme.success(context) : AppTheme.warning(context),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -84,8 +84,8 @@ class _OverlayPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: const BoxDecoration(
-        color: AppColors.bgOverlay,
+      decoration: BoxDecoration(
+        color: AppTheme.bgOverlay(context),
         borderRadius: AppRadius.sheetRadius,
       ),
       child: Column(
@@ -94,31 +94,31 @@ class _OverlayPreview extends StatelessWidget {
             width: 36,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.borderSubtle,
+              color: AppTheme.borderSubtle(context),
               borderRadius: AppRadius.smRadius,
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
           Row(
             children: [
-              Expanded(child: _tile(Icons.wifi, active: true)),
+              Expanded(child: _tile(Icons.wifi, active: true, context: context)),
               const SizedBox(width: AppSpacing.md),
-              Expanded(child: _tile(Icons.bluetooth, active: true)),
+              Expanded(child: _tile(Icons.bluetooth, active: true, context: context)),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
           Row(
             children: [
-              Expanded(child: _tile(Icons.flashlight_on, active: false)),
+              Expanded(child: _tile(Icons.flashlight_on, active: false, context: context)),
               const SizedBox(width: AppSpacing.md),
-              Expanded(child: _tile(Icons.brightness_6, active: false)),
+              Expanded(child: _tile(Icons.brightness_6, active: false, context: context)),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
           Container(
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.borderSubtle,
+              color: AppTheme.borderSubtle(context),
               borderRadius: AppRadius.smRadius,
             ),
           ),
@@ -127,17 +127,17 @@ class _OverlayPreview extends StatelessWidget {
     );
   }
 
-  Widget _tile(IconData icon, {required bool active}) {
+  Widget _tile(IconData icon, {required bool active, required BuildContext context}) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       decoration: BoxDecoration(
-        color: active ? AppColors.accentPrimaryMuted : AppColors.bgSurface,
+        color: active ? AppTheme.accentPrimaryMuted(context) : AppTheme.surface(context),
         borderRadius: AppRadius.mdRadius,
       ),
       alignment: Alignment.center,
       child: Icon(
         icon,
-        color: active ? AppColors.accentPrimary : AppColors.textSecondary,
+        color: active ? AppTheme.accentPrimary(context) : AppTheme.textSecondary(context),
         size: 20,
       ),
     );

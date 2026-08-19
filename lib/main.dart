@@ -8,10 +8,12 @@ import 'screens/settings_screen.dart';
 import 'screens/notes_editor_screen.dart';
 import 'screens/weather_location_screen.dart';
 import 'services/app_strings.dart';
+import 'services/download_service.dart';
 import 'services/favorites_service.dart';
 import 'services/locale_controller.dart';
 import 'services/native_bridge_service.dart';
 import 'services/theme_mode_controller.dart';
+import 'services/wallpaper_favorites_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 
@@ -19,10 +21,6 @@ void main() {
   runApp(const ThemeStudioApp());
 }
 
-/// App ke andar kahin se bhi navigate karne ke liye -- Notes widget ka
-/// "warm start" case (app already chal rahi ho) isi ke zariye
-/// "/notes_editor" route push karta hai, kyunke us waqt koi BuildContext
-/// seedha available nahi hota (native se aaya hua call hai).
 final navigatorKey = GlobalKey<NavigatorState>();
 
 class ThemeStudioApp extends StatefulWidget {
@@ -39,10 +37,9 @@ class _ThemeStudioAppState extends State<ThemeStudioApp> {
     LocaleController.instance.load();
     ThemeModeController.instance.load();
     FavoritesService.instance.load();
+    WallpaperFavoritesService.instance.load();
+    DownloadService.instance.load();
 
-    // Native (MainActivity.onNewIntent) se "openNotesEditor" call sunte
-    // hain -- ye sirf tab aata hai jab Notes widget ka fallback-editor
-    // tap ho aur app already background/foreground mein chal rahi ho.
     NativeBridgeService.instance.setIncomingCallHandler((method) async {
       if (method == 'openNotesEditor') {
         navigatorKey.currentState?.pushNamed('/notes_editor');

@@ -30,15 +30,7 @@ class ThemeModel {
   }
 }
 
-/// App ke andar available preset themes. Naye themes yahan add karte jaayein.
-/// NOTE: wallpaperAssetPath ab category folder ke andar wali specific
-/// image ka path hona chahiye (e.g. assets/wallpapers/nature/1.png) --
-/// aapki numbered images ke hisaab se exact filename yahan update kar dein.
-///
-/// Ye poora "matrix" hai: har wallpaper category (nature/dark/minimal/
-/// abstract) x har icon pack (cartoon/flat_colors/dark_mode) ka ek combo --
-/// taake jitne bhi wallpapers maujood hain unka poora fayda uthaya jaaye,
-/// har combo ek distinct naam + accent color ke saath.
+/// Available preset themes.
 const List<ThemeModel> presetThemes = [
   // ---------------- Nature ----------------
   ThemeModel(

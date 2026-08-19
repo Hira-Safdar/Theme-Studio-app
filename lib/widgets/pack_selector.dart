@@ -1,8 +1,3 @@
-// lib/widgets/pack_selector.dart
-//
-// Segmented control for choosing the active icon pack — 3 equal segments,
-// deliberately NOT a dropdown (§2, Icon pack selector).
-
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
@@ -25,9 +20,9 @@ class PackSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.bgSurface,
+        color: AppTheme.surface(context),
         borderRadius: AppRadius.smRadius,
-        border: Border.all(color: AppColors.borderSubtle),
+        border: Border.all(color: AppTheme.borderSubtle(context)),
       ),
       child: Row(
         children: options.map((id) {
@@ -44,7 +39,7 @@ class PackSelector extends StatelessWidget {
                   curve: AppMotion.fastCurve,
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                   decoration: BoxDecoration(
-                    color: isSelected ? AppColors.accentPrimaryMuted : Colors.transparent,
+                    color: isSelected ? AppTheme.accentPrimaryMuted(context) : Colors.transparent,
                     borderRadius: AppRadius.smRadius,
                   ),
                   alignment: Alignment.center,
@@ -52,7 +47,7 @@ class PackSelector extends StatelessWidget {
                     labelBuilder(id),
                     textAlign: TextAlign.center,
                     style: AppTypography.label.copyWith(
-                      color: isSelected ? AppColors.accentPrimary : AppColors.textSecondary,
+                      color: isSelected ? AppTheme.accentPrimary(context) : AppTheme.textSecondary(context),
                     ),
                   ),
                 ),

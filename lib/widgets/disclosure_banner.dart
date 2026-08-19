@@ -21,11 +21,11 @@ class DisclosureBanner extends StatelessWidget {
         horizontal: AppSpacing.screenPadding,
         vertical: AppSpacing.sm,
       ),
-      color: AppColors.bgSurface,
+      color: AppTheme.surface(context),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline, size: 16, color: AppColors.accentPrimary),
+          Icon(Icons.info_outline, size: 16, color: AppTheme.accentPrimary(context)),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(message, style: AppTypography.bodySecondary),

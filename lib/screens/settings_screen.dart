@@ -6,14 +6,7 @@ import '../services/theme_mode_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/settings_row.dart';
 
-// TODO: replace with your real privacy policy URL once you have one hosted.
-// While the URL is still a placeholder, the "Privacy policy" row shows a
-// "coming soon" message instead of navigating to a broken page.
 const String _privacyPolicyUrl = 'https://example.com/theme-studio-privacy';
-
-// TODO: replace with your real Play Store applicationId once the app is
-// published under its real package name (currently still the Flutter
-// template default, com.example.theme_studio, which has no real listing).
 const String _playStorePackageId = 'com.example.theme_studio';
 
 const String _feedbackEmail = 'hirasafdar04@gmail.com';
@@ -41,7 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final currentCode = LocaleController.instance.languageCode;
     final selected = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: AppColors.bgSurfaceRaised,
+      backgroundColor: AppTheme.surfaceRaised(context),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(AppRadius.lg),
@@ -56,7 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             return ListTile(
               title: Text(entry.value, style: AppTypography.body),
               trailing: isSelected
-                  ? const Icon(Icons.check, color: AppColors.accentPrimary)
+                  ? Icon(Icons.check, color: AppTheme.accentPrimary(context))
                   : null,
               onTap: () => Navigator.of(context).pop(entry.key),
             );
@@ -214,4 +207,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
 }

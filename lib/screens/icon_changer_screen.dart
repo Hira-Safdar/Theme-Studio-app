@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/disclosure_banner.dart';
 import '../widgets/icon_list_row.dart';
 import '../widgets/pack_selector.dart';
+import 'online_icon_packs_screen.dart';
 
 /// "Auto" -- koi bundled asset nahi, koi manual pick bhi nahi. Har
 /// installed app ka REAL icon leke native side par ek consistent shape +
@@ -59,7 +60,7 @@ String _autoStyleDisplayName(String id) => id == 'neon' ? 'Neon Glass' : 'Classi
 /// preset" ke liye reserved hain (dekho app_theme.dart), isliye yahan alag
 /// dedicated palette rakhi hai.
 const List<Color> autoAccentPresets = [
-  Color(0xFF00FFF0), // Cyan -- app ka apna accentPrimary
+  Color(0xFF00FFF0), // Cyan
   Color(0xFFFF7A59), // Coral
   Color(0xFF8B7CFF), // Violet
   Color(0xFF4FD8B8), // Mint
@@ -101,9 +102,6 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   final Map<String, String> _autoPreviewPaths = {};
   Timer? _autoDebounce;
 
-  // Checkbox reference design (Themie-style) me sab default-selected hote
-  // hain -- "Apply All" isi selection set par kaam karta hai. Apps load
-  // hone ke baad populate hota hai (ab const nahi ho sakta).
   final Set<String> _selectedPackages = {};
 
   bool get _isCustomTab => activeCategory == customCategoryId;
@@ -119,12 +117,6 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     return app.iconKey != null;
   }
 
-  /// [_apps] ko do groups mein split karke wapas jodta hai -- jin apps ka
-  /// icon maujood hai wo pehle, phir baaki -- taake user ko turant pata
-  /// chale ke konsi apps abhi apply karne layak hain. Har group ke andar
-  /// original (alphabetical) order barqarar rehta hai, isliye simple
-  /// split-and-concat use kiya hai (List.sort() stable guarantee nahi
-  /// deta, isliye usse groups ke andar order badal sakta tha).
   List<AppEntry> get _sortedApps {
     final q = _searchQuery.toLowerCase();
     final filtered = q.isEmpty
@@ -147,9 +139,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   }
 
   /// Device ki real installed (launchable) apps list native side se
-  /// laata hai -- demoApps ki hardcoded/hardcoded-OEM list ki jagah.
-  /// Isi ke baad hi custom icons, old icons, aur (agar Auto tab active ho)
-  /// auto previews load hote hain.
+  /// laata hai.
   Future<void> _loadInstalledApps() async {
     final installed = await NativeBridgeService.instance.getInstalledApps();
     if (!mounted) return;
@@ -174,10 +164,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     if (!_isAutoTab && !_isCustomTab) _refreshSelection();
   }
 
-  /// Har app ka asal (device par currently laga hua) launcher icon
-  /// native side (PackageManager) se fetch karta hai -- row ke "before"
-  /// preview ke liye. Koi bhi error par bytes null rehte hain aur UI
-  /// khud generic fallback icon dikha deta hai.
+  /// Har app ka asal launcher icon native side se fetch karta hai.
   Future<void> _loadOldIcons() async {
     final results = await Future.wait(_apps.map((app) async {
       try {
@@ -434,7 +421,19 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     // andar dobara sort karna har row ke liye wasteful hota.
     final sortedApps = _sortedApps;
     return Scaffold(
-      appBar: AppBar(title: Text(tr('icon_changer_title'))),
+      appBar: AppBar(
+        title: Text(tr('icon_changer_title')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.palette_outlined),
+            tooltip: tr('online_icon_packs'),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const OnlineIconPacksScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           const DisclosureBanner(
@@ -495,7 +494,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
-                  fillColor: AppColors.bgSurfaceRaised,
+                  fillColor: AppTheme.surfaceRaised(context),
                 ),
               ),
             ),
@@ -622,7 +621,7 @@ class _AutoControls extends StatelessWidget {
                       color: color,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isSelected ? AppColors.textPrimary : Colors.transparent,
+                        color: isSelected ? AppTheme.textPrimary(context) : Colors.transparent,
                         width: 2,
                       ),
                     ),

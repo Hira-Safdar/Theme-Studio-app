@@ -1,20 +1,8 @@
-// lib/widgets/wallpaper_preview.dart
-//
-// Wallpaper phone-frame preview — device-silhouette frame, full-bleed
-// wallpaper, dummy status bar + icons at low opacity to judge legibility,
-// Apply/Cancel below. §2 + §3.3.
-//
-// Shown as a full route so it can breathe (device silhouette needs real
-// screen height); returns true if the user confirms Apply, false/null
-// if they cancel.
-
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'pack_selector.dart';
 
-/// Home/lock/both target ids -- setWallpaper() ke [target] param se match
-/// karte hain (native_bridge_service.dart / MainActivity.kt).
 const List<String> _wallpaperTargets = ['home', 'lock', 'both'];
 
 String _targetLabel(String id) {
@@ -30,13 +18,8 @@ String _targetLabel(String id) {
 
 class WallpaperPreviewScreen extends StatefulWidget {
   const WallpaperPreviewScreen({super.key, required this.image});
-
-  /// Pass an [AssetImage] for bundled wallpapers or a [FileImage] for
-  /// gallery-picked ones — caller decides which.
   final ImageProvider image;
 
-  /// Returns the chosen target ('home' | 'lock' | 'both') if the user taps
-  /// Apply, or null if they cancel/close the preview.
   static Future<String?> show(BuildContext context, ImageProvider image) {
     return Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (_) => WallpaperPreviewScreen(image: image)),
@@ -48,14 +31,12 @@ class WallpaperPreviewScreen extends StatefulWidget {
 }
 
 class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
-  // "Both" default -- sabse common expectation, user chahe to Home/Lock
-  // alag se bhi choose kar sakta hai.
   String _target = 'both';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgBase,
+      backgroundColor: AppTheme.scaffoldBg(context),
       appBar: AppBar(
         title: const Text('Preview'),
         leading: IconButton(
@@ -68,9 +49,7 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
         child: Column(
           children: [
             Expanded(
-              child: Center(
-                child: _PhoneFrame(image: widget.image),
-              ),
+              child: _PhoneFrame(image: widget.image, target: _target),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
@@ -109,100 +88,220 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
 }
 
 class _PhoneFrame extends StatelessWidget {
-  const _PhoneFrame({required this.image});
+  const _PhoneFrame({required this.image, required this.target});
   final ImageProvider image;
+  final String target;
 
   @override
   Widget build(BuildContext context) {
-    // IMPORTANT: the horizontal spacing has to be a Padding OUTSIDE
-    // AspectRatio, not a margin on the Container inside it. AspectRatio
-    // sizes its child first based on the 9:19.5 ratio, so a margin
-    // applied afterward just shrinks the rendered box without the ratio
-    // adjusting — the frame ends up narrower than intended relative to
-    // its height. Padding here means AspectRatio computes the ratio
-    // AFTER the horizontal space is already accounted for.
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 300),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-          child: AspectRatio(
-            aspectRatio: 9 / 19.5,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: AppColors.borderFocus, width: 6),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image(image: image, fit: BoxFit.cover),
-                  // Dummy status bar + icons at low opacity — for judging
-                  // wallpaper legibility, not a functional status bar.
-                  const Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: Opacity(
-                      opacity: 0.55,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md,
-                          vertical: AppSpacing.sm,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '9:41',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                Icon(Icons.signal_cellular_alt, color: Colors.white, size: 14),
-                                SizedBox(width: 4),
-                                Icon(Icons.wifi, color: Colors.white, size: 14),
-                                SizedBox(width: 4),
-                                Icon(Icons.battery_full, color: Colors.white, size: 14),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
+    final frame = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 300),
+      child: AspectRatio(
+        aspectRatio: 9 / 19.5,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(color: AppTheme.borderFocus(context), width: 6),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image(image: image, fit: BoxFit.cover),
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Opacity(
+                  opacity: 0.55,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm,
                     ),
-                  ),
-                  // A few dummy app icons near the bottom, also low-opacity,
-                  // so the preview reads like a Home Screen rather than a
-                  // bare image viewer.
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: AppSpacing.xl,
-                    child: Opacity(
-                      opacity: 0.55,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: List.generate(
-                          4,
-                          (_) => Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.85),
-                              borderRadius: AppRadius.mdRadius,
-                            ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '9:41',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ),
+                        Row(
+                          children: [
+                            Icon(Icons.signal_cellular_alt, color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Icon(Icons.wifi, color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Icon(Icons.battery_full, color: Colors.white, size: 14),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
+              _LockOverlay(target: target),
+              _HomeOverlay(target: target),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (target == 'both') {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const _LabelChip(label: 'Lock screen', fraction: 0.5),
+            SizedBox(
+              height: 220,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: OverflowBox(
+                  maxHeight: 420,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image(image: image, fit: BoxFit.cover),
+                      const _LockContent(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const _LabelChip(label: 'Home screen', fraction: 0.5),
+            SizedBox(
+              height: 220,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: OverflowBox(
+                  maxHeight: 420,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image(image: image, fit: BoxFit.cover),
+                      const _HomeContent(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Center(child: frame);
+  }
+}
+
+class _LabelChip extends StatelessWidget {
+  const _LabelChip({required this.label, required this.fraction});
+  final String label;
+  final double fraction;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceRaised(context),
+        borderRadius: AppRadius.mdRadius,
+      ),
+      child: Text(label, style: TextStyle(fontSize: 11, color: AppTheme.textSecondary(context))),
+    );
+  }
+}
+
+class _LockOverlay extends StatelessWidget {
+  const _LockOverlay({required this.target});
+  final String target;
+  @override
+  Widget build(BuildContext context) {
+    if (target != 'lock') return const SizedBox.shrink();
+    return const _LockContent();
+  }
+}
+
+class _LockContent extends StatelessWidget {
+  const _LockContent();
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '9:41',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 56,
+              fontWeight: FontWeight.w200,
+            ),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Wednesday, August 19',
+            style: TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          SizedBox(height: 16),
+          Icon(Icons.lock_outline, color: Colors.white54, size: 20),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeOverlay extends StatelessWidget {
+  const _HomeOverlay({required this.target});
+  final String target;
+  @override
+  Widget build(BuildContext context) {
+    if (target != 'home') return const SizedBox.shrink();
+    return const _HomeContent();
+  }
+}
+
+class _HomeContent extends StatelessWidget {
+  const _HomeContent();
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: AppSpacing.xl,
+      child: Opacity(
+        opacity: 0.6,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: List.generate(
+            4,
+            (_) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    borderRadius: AppRadius.mdRadius,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  width: 30,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: Colors.white54,
+                    borderRadius: AppRadius.smRadius,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -211,9 +310,10 @@ class _PhoneFrame extends StatelessWidget {
   }
 }
 
-/// Convenience for building the right ImageProvider from either an asset
-/// path (bundled wallpapers) or a file path (gallery pick).
-ImageProvider wallpaperImageProvider({String? assetPath, String? filePath}) {
+/// Convenience for building the right ImageProvider from an asset path,
+/// a file path, or a network URL (for online wallpapers).
+ImageProvider wallpaperImageProvider({String? assetPath, String? filePath, String? networkUrl}) {
+  if (networkUrl != null) return NetworkImage(networkUrl);
   if (filePath != null) return FileImage(File(filePath));
   return AssetImage(assetPath!);
 }

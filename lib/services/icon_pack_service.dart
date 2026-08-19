@@ -59,13 +59,6 @@ class IconPackService {
   /// Bundled (asset) icon ko ek real file me convert karta hai, kyunki
   /// Kotlin ki ShortcutManager ko ek file-system path chahiye hota hai,
   /// Flutter asset bundle path nahi chal sakta seedha.
-  ///
-  /// IMPORTANT: [assetPath] ka hashCode filename mein shamil karte hain,
-  /// sirf [cacheKey] (jo aksar sirf packageName hota hai) par depend nahi
-  /// karte. Warna ek hi app ke liye do alag packs (cartoon vs dark_mode)
-  /// same cache file overwrite kar sakte the, aur agar kabhi calls
-  /// overlap/race ho jaayen to stale (purane pack ka) icon file use ho
-  /// sakti thi.
   Future<String> assetToFile(String assetPath, String cacheKey) async {
     final byteData = await rootBundle.load(assetPath);
     final dir = await getTemporaryDirectory();

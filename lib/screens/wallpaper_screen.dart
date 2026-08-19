@@ -1,22 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle, AssetManifest;
 import 'package:image_picker/image_picker.dart';
-import '../data/online_wallpapers.dart';
 import '../models/online_wallpaper.dart';
 import '../services/app_strings.dart';
 import '../services/download_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/icon_pack_service.dart';
+import '../services/wallpaper_favorites_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/wallpaper_preview.dart';
 
-/// Category folder names -- yeh humari assets/wallpapers/<category>/
-/// folder structure se match karti hain. Naya category add karna ho to:
-/// 1. assets/wallpapers/<naya_naam>/ folder banayein
-/// 2. pubspec.yaml me "assets:" list me path add karein
-/// 3. neeche _categories list me naam add karein
 const List<String> _categories = ['nature', 'abstract', 'dark', 'minimal'];
-const List<String> _onlineCategories = ['nature', 'abstract', 'dark', 'minimal'];
 
 class WallpaperScreen extends StatefulWidget {
   const WallpaperScreen({super.key});
@@ -35,8 +30,9 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _categories.length + 1, vsync: this);
+    _tabController = TabController(length: _categories.length + 2, vsync: this);
     _loadAssets();
+    WallpaperFavoritesService.instance.load();
   }
 
   @override
@@ -49,7 +45,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     try {
       final assetManifest = await AssetManifest.loadFromAssetBundle(rootBundle);
       final allPaths = assetManifest.listAssets();
-
       final Map<String, List<String>> grouped = {};
       for (final category in _categories) {
         final prefix = 'assets/wallpapers/$category/';
@@ -57,7 +52,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
         matches.sort();
         grouped[category] = matches;
       }
-
       if (mounted) {
         setState(() {
           _wallpapersByCategory = grouped;
@@ -65,10 +59,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
         });
       }
     } catch (_) {
-      // Asset manifest couldn't be read (e.g. missing assets, or a test
-      // environment without a built asset bundle). Fall back to empty
-      // categories — the grid already shows a "No images found" message
-      // per category in that case, instead of crashing the screen.
       if (mounted) {
         setState(() {
           _wallpapersByCategory = {for (final c in _categories) c: <String>[]};
@@ -78,43 +68,53 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     }
   }
 
-  /// Opens the phone-frame preview first; only calls the native setter if
-  /// the user confirms Apply from that screen. §3.3.
   Future<void> _previewThenApplyFromAsset(String assetPath) async {
     final target = await WallpaperPreviewScreen.show(
       context,
       wallpaperImageProvider(assetPath: assetPath),
     );
-    if (target == null || !mounted) return; // user ne cancel kiya
-
+    if (target == null || !mounted) return;
     setState(() => _applying = true);
     try {
       final tempPath = await IconPackService.instance.assetToFile(
         assetPath,
         assetPath.hashCode.toString(),
       );
-      final ok = await NativeBridgeService.instance
-          .setWallpaper(tempPath, target: target);
+      final ok = await NativeBridgeService.instance.setWallpaper(tempPath, target: target);
       _showResult(ok);
     } finally {
       if (mounted) setState(() => _applying = false);
     }
   }
 
-  Future<void> _previewThenApplyFromGallery() async {
+  Future<void> _previewThenApplyFromMy(String filePath) async {
+    final target = await WallpaperPreviewScreen.show(
+      context,
+      wallpaperImageProvider(filePath: filePath),
+    );
+    if (target == null || !mounted) return;
+    setState(() => _applying = true);
+    try {
+      final ok = await NativeBridgeService.instance.setWallpaper(filePath, target: target);
+      _showResult(ok);
+    } finally {
+      if (mounted) setState(() => _applying = false);
+    }
+  }
+
+  Future<void> _importFromGallery() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked == null || !mounted) return;
-
+    await WallpaperFavoritesService.instance.addMyWallpaper(picked.path);
+    if (!mounted) return;
     final target = await WallpaperPreviewScreen.show(
       context,
       wallpaperImageProvider(filePath: picked.path),
     );
-    if (target == null || !mounted) return; // user ne cancel kiya
-
+    if (target == null || !mounted) return;
     setState(() => _applying = true);
     try {
-      final ok = await NativeBridgeService.instance
-          .setWallpaper(picked.path, target: target);
+      final ok = await NativeBridgeService.instance.setWallpaper(picked.path, target: target);
       _showResult(ok);
     } finally {
       if (mounted) setState(() => _applying = false);
@@ -124,17 +124,16 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   void _showResult(bool ok) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? 'Wallpaper applied' : 'Couldn\'t apply — tap to retry')),
+      SnackBar(content: Text(ok ? tr('wallpaper_applied') : tr('wallpaper_failed'))),
     );
   }
 
   Future<void> _previewThenApplyFromOnline(OnlineWallpaper wallpaper) async {
     final target = await WallpaperPreviewScreen.show(
       context,
-      wallpaperImageProvider(assetPath: wallpaper.thumbnailUrl),
+      wallpaperImageProvider(networkUrl: wallpaper.thumbnailUrl),
     );
     if (target == null || !mounted) return;
-
     setState(() => _applying = true);
     try {
       final localPath = await DownloadService.instance.download(wallpaper.url);
@@ -151,76 +150,182 @@ class _WallpaperScreenState extends State<WallpaperScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(tr('wallpaper_title')),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabs: [
-            ..._categories.map((c) => Tab(text: _titleCase(c))),
-            Tab(text: tr('online_tab')),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_photo_alternate),
-            onPressed: _applying ? null : _previewThenApplyFromGallery,
-            tooltip: 'Choose your own wallpaper from gallery',
-          ),
-        ],
-      ),
-      body: _loading || _applying
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
+    return ListenableBuilder(
+      listenable: WallpaperFavoritesService.instance,
+      builder: (context, _) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(tr('wallpaper_title')),
+            bottom: TabBar(
               controller: _tabController,
-              children: [
-                ..._categories.map((category) {
-                  final wallpapers = _wallpapersByCategory[category] ?? [];
-                  if (wallpapers.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'No images found in assets/wallpapers/$category/',
-                        style: AppTypography.bodySecondary,
-                      ),
-                    );
-                  }
-                  return GridView.builder(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: AppSpacing.md,
-                      mainAxisSpacing: AppSpacing.md,
-                      childAspectRatio: 2 / 3,
-                    ),
-                    itemCount: wallpapers.length,
-                    itemBuilder: (context, i) {
-                      final path = wallpapers[i];
-                      return GestureDetector(
-                        onTap: () => _previewThenApplyFromAsset(path),
-                        child: ClipRRect(
-                          borderRadius: AppRadius.mdRadius,
-                          child: Image.asset(path, fit: BoxFit.cover),
-                        ),
-                      );
-                    },
-                  );
-                }),
-                // Online wallpapers tab
-                _OnlineWallpaperGrid(
-                  onApply: _previewThenApplyFromOnline,
-                ),
+              isScrollable: true,
+              tabs: [
+                Tab(text: tr('my_tab')),
+                ..._categories.map((c) => Tab(text: _titleCase(c))),
+                Tab(text: tr('online_tab')),
               ],
             ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.add_photo_alternate),
+                onPressed: _applying ? null : _importFromGallery,
+                tooltip: tr('import_gallery'),
+              ),
+            ],
+          ),
+          body: _loading || _applying
+              ? const Center(child: CircularProgressIndicator())
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _MyWallpapersGrid(
+                      onApply: _previewThenApplyFromMy,
+                    ),
+                    ..._categories.map((category) {
+                      final wallpapers = _wallpapersByCategory[category] ?? [];
+                      if (wallpapers.isEmpty) {
+                        return Center(
+                          child: Text(tr('no_wallpapers_found'), style: AppTypography.bodySecondary),
+                        );
+                      }
+                      return _AssetWallpaperGrid(
+                        wallpapers: wallpapers,
+                        onApply: _previewThenApplyFromAsset,
+                      );
+                    }),
+                    _OnlineWallpaperGrid(onApply: _previewThenApplyFromOnline),
+                  ],
+                ),
+        );
+      },
     );
   }
 }
 
-/// Grid of downloadable wallpapers from the internet. Shows category
-/// chips at the top to filter, and a 2-column grid of thumbnails below.
 String _titleCase(String s) {
   if (s.isEmpty) return s;
   return s[0].toUpperCase() + s.substring(1);
+}
+
+class _AssetWallpaperGrid extends StatelessWidget {
+  const _AssetWallpaperGrid({required this.wallpapers, required this.onApply});
+  final List<String> wallpapers;
+  final Future<void> Function(String) onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: AppSpacing.md,
+        mainAxisSpacing: AppSpacing.md,
+        childAspectRatio: 2 / 3,
+      ),
+      itemCount: wallpapers.length,
+      itemBuilder: (context, i) {
+        final path = wallpapers[i];
+        final id = 'asset_${path.hashCode}';
+        final isFav = WallpaperFavoritesService.instance.isFavorite(id);
+        return GestureDetector(
+          onTap: () => onApply(path),
+          child: ClipRRect(
+            borderRadius: AppRadius.mdRadius,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(path, fit: BoxFit.cover),
+                Positioned(
+                  top: AppSpacing.sm,
+                  left: AppSpacing.sm,
+                  child: GestureDetector(
+                    onTap: () => WallpaperFavoritesService.instance.toggleFavorite(id),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isFav ? Icons.favorite : Icons.favorite_border,
+                        size: 18,
+                        color: isFav ? AppTheme.error(context) : Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MyWallpapersGrid extends StatelessWidget {
+  const _MyWallpapersGrid({required this.onApply});
+  final Future<void> Function(String) onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    final paths = WallpaperFavoritesService.instance.myPaths;
+    if (paths.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.photo_library_outlined, size: 48, color: AppTheme.textSecondary(context)),
+              const SizedBox(height: AppSpacing.md),
+              Text(tr('my_wallpapers_empty'), textAlign: TextAlign.center, style: AppTypography.bodySecondary),
+            ],
+          ),
+        ),
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: AppSpacing.md,
+        mainAxisSpacing: AppSpacing.md,
+        childAspectRatio: 2 / 3,
+      ),
+      itemCount: paths.length,
+      itemBuilder: (context, i) {
+        final path = paths[i];
+        return GestureDetector(
+          onTap: () => onApply(path),
+          child: ClipRRect(
+            borderRadius: AppRadius.mdRadius,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.file(File(path), fit: BoxFit.cover),
+                Positioned(
+                  top: AppSpacing.sm,
+                  right: AppSpacing.sm,
+                  child: GestureDetector(
+                    onTap: () => WallpaperFavoritesService.instance.removeMyWallpaper(path),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.close, size: 16, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _OnlineWallpaperGrid extends StatefulWidget {
@@ -232,136 +337,165 @@ class _OnlineWallpaperGrid extends StatefulWidget {
 }
 
 class _OnlineWallpaperGridState extends State<_OnlineWallpaperGrid> {
-  String _selectedCategory = 'all';
+  final _searchController = TextEditingController();
+  List<OnlineWallpaper> _wallpapers = [];
+  bool _loading = false;
+  bool _hasSearched = false;
+  bool _initialFetchDone = false;
 
-  List<OnlineWallpaper> get _filtered {
-    if (_selectedCategory == 'all') return curatedOnlineWallpapers;
-    return curatedOnlineWallpapers.where((w) => w.category == _selectedCategory).toList();
+  @override
+  void initState() {
+    super.initState();
+    _doInitialFetch();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialFetchDone && !_loading && _wallpapers.isEmpty && DownloadService.instance.hasApiKey) {
+      _doInitialFetch();
+    }
+  }
+
+  Future<void> _doInitialFetch() async {
+    _initialFetchDone = true;
+    await _fetchWallpapers('wallpaper');
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchWallpapers(String query) async {
+    if (query.trim().isEmpty) return;
+    if (!DownloadService.instance.hasApiKey) return;
+    setState(() {
+      _loading = true;
+      _hasSearched = true;
+    });
+    final results = await DownloadService.instance.search(query);
+    if (!mounted) return;
+    setState(() {
+      _wallpapers = results;
+      _loading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Category filter chips
-        SizedBox(
-          height: 48,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            children: [
-              _CategoryChip(
-                label: 'All',
-                isSelected: _selectedCategory == 'all',
-                onTap: () => setState(() => _selectedCategory = 'all'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.sm),
+          child: TextField(
+            controller: _searchController,
+            onSubmitted: _fetchWallpapers,
+            decoration: InputDecoration(
+              hintText: tr('search_wallpapers_hint'),
+              prefixIcon: const Icon(Icons.search, size: 20),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: AppRadius.smRadius,
+                borderSide: BorderSide.none,
               ),
-              ..._onlineCategories.map((c) => _CategoryChip(
-                label: _titleCase(c),
-                isSelected: _selectedCategory == c,
-                onTap: () => setState(() => _selectedCategory = c),
-              )),
-            ],
+              filled: true,
+              fillColor: AppTheme.surfaceRaised(context),
+            ),
           ),
         ),
-        const SizedBox(height: AppSpacing.sm),
         Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: AppSpacing.md,
-              mainAxisSpacing: AppSpacing.md,
-              childAspectRatio: 2 / 3,
-            ),
-            itemCount: _filtered.length,
-            itemBuilder: (context, i) {
-              final wallpaper = _filtered[i];
-              return GestureDetector(
-                onTap: () => widget.onApply(wallpaper),
-                child: ClipRRect(
-                  borderRadius: AppRadius.mdRadius,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.network(
-                        wallpaper.thumbnailUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: AppColors.bgSurfaceRaised,
-                          child: const Icon(Icons.broken_image, color: AppColors.textSecondary),
-                        ),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _wallpapers.isEmpty
+                  ? Center(
+                      child: Text(
+                        _hasSearched ? tr('search_no_results') : '',
+                        style: AppTypography.bodySecondary,
                       ),
-                      // Author credit at bottom
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
-                            ),
+                    )
+                  : ListenableBuilder(
+                      listenable: WallpaperFavoritesService.instance,
+                      builder: (context, _) {
+                        return GridView.builder(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: AppSpacing.md,
+                            mainAxisSpacing: AppSpacing.md,
+                            childAspectRatio: 2 / 3,
                           ),
-                          child: Text(
-                            wallpaper.author,
-                            style: AppTypography.bodySecondary.copyWith(
-                              color: Colors.white,
-                              fontSize: 10,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
+                          itemCount: _wallpapers.length,
+                          itemBuilder: (context, i) {
+                            final wallpaper = _wallpapers[i];
+                            final isFav = WallpaperFavoritesService.instance.isFavorite(wallpaper.id);
+                            return GestureDetector(
+                              onTap: () => widget.onApply(wallpaper),
+                              child: ClipRRect(
+                                borderRadius: AppRadius.mdRadius,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Image.network(
+                                      wallpaper.thumbnailUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        color: AppTheme.surfaceRaised(context),
+                                        child: Icon(Icons.broken_image, color: AppTheme.textSecondary(context)),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: AppSpacing.sm,
+                                      left: AppSpacing.sm,
+                                      child: GestureDetector(
+                                        onTap: () => WallpaperFavoritesService.instance.toggleFavorite(wallpaper.id),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(alpha: 0.4),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            isFav ? Icons.favorite : Icons.favorite_border,
+                                            size: 18,
+                                            color: isFav ? AppTheme.error(context) : Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      left: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
+                                          ),
+                                        ),
+                                        child: Text(
+                                          wallpaper.author,
+                                          style: AppTypography.bodySecondary.copyWith(color: Colors.white, fontSize: 10),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
         ),
       ],
-    );
-  }
-}
-
-class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: AppSpacing.sm),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.accentPrimaryMuted : AppColors.bgSurfaceRaised,
-            borderRadius: AppRadius.smRadius,
-            border: Border.all(
-              color: isSelected ? AppColors.accentPrimary : AppColors.borderSubtle,
-            ),
-          ),
-          child: Text(
-            label,
-            style: AppTypography.label.copyWith(
-              color: isSelected ? AppColors.accentPrimary : AppColors.textSecondary,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

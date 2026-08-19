@@ -139,49 +139,6 @@ class AppRadius {
 // ---------------------------------------------------------------------------
 // Elevation tokens — background + shadow pairing per level
 // ---------------------------------------------------------------------------
-class AppElevation {
-  AppElevation._();
-
-  static const level0 = BoxDecoration(color: AppColors.bgBase);
-
-  static BoxDecoration level1({BorderRadius? radius}) => BoxDecoration(
-        color: AppColors.bgSurface,
-        borderRadius: radius,
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x66000000), // rgba(0,0,0,.4)
-            blurRadius: 2,
-            offset: Offset(0, 1),
-          ),
-        ],
-      );
-
-  static BoxDecoration level2({BorderRadius? radius}) => BoxDecoration(
-        color: AppColors.bgSurfaceRaised,
-        borderRadius: radius,
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x59000000), // rgba(0,0,0,.35)
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      );
-
-  static BoxDecoration overlay({BorderRadius? radius}) => BoxDecoration(
-        color: AppColors.bgOverlay,
-        borderRadius: radius ?? AppRadius.sheetRadius,
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x80000000), // rgba(0,0,0,.5)
-            blurRadius: 24,
-            offset: Offset(0, -8),
-          ),
-        ],
-      );
-  // NOTE: pair `overlay()` with a BackdropFilter(ImageFilter.blur(sigmaX: 20, sigmaY: 20))
-  // in the widget that uses it — blur can't be expressed as a BoxDecoration alone.
-}
 
 // ---------------------------------------------------------------------------
 // Motion tokens
@@ -215,35 +172,30 @@ class AppTypography {
     fontSize: 28,
     height: 34 / 28,
     fontWeight: FontWeight.w600,
-    color: AppColors.textPrimary,
   );
 
   static const heading = TextStyle(
     fontSize: 20,
     height: 26 / 20,
     fontWeight: FontWeight.w600,
-    color: AppColors.textPrimary,
   );
 
   static const body = TextStyle(
     fontSize: 15,
     height: 22 / 15,
     fontWeight: FontWeight.w400,
-    color: AppColors.textPrimary,
   );
 
   static const bodySecondary = TextStyle(
     fontSize: 13,
     height: 18 / 13,
     fontWeight: FontWeight.w400,
-    color: AppColors.textSecondary,
   );
 
   static const label = TextStyle(
     fontSize: 12,
     height: 16 / 12,
     fontWeight: FontWeight.w500,
-    color: AppColors.textSecondary,
     letterSpacing: 0.4,
   );
 
@@ -251,7 +203,6 @@ class AppTypography {
     fontSize: 15,
     height: 20 / 15,
     fontWeight: FontWeight.w600,
-    color: AppColors.textPrimary,
   );
 }
 
@@ -285,6 +236,71 @@ class AppTheme {
   static Color textSecondary(BuildContext context) =>
       isLight(context) ? AppColorsLight.textSecondary : AppColors.textSecondary;
 
+  /// Returns the appropriate border color based on current brightness.
+  static Color borderSubtle(BuildContext context) =>
+      isLight(context) ? AppColorsLight.borderSubtle : AppColors.borderSubtle;
+
+  /// Returns the appropriate focus border color based on current brightness.
+  static Color borderFocus(BuildContext context) =>
+      isLight(context) ? AppColorsLight.borderFocus : AppColors.borderFocus;
+
+  /// Returns the appropriate muted accent color based on current brightness.
+  static Color accentPrimaryMuted(BuildContext context) =>
+      isLight(context) ? AppColorsLight.accentPrimaryMuted : AppColors.accentPrimaryMuted;
+
+  /// Returns the appropriate accent color based on current brightness.
+  static Color accentPrimary(BuildContext context) =>
+      isLight(context) ? AppColorsLight.accentPrimary : AppColors.accentPrimary;
+
+  /// Returns the appropriate overlay color based on current brightness.
+  static Color bgOverlay(BuildContext context) =>
+      isLight(context) ? AppColorsLight.bgOverlay : AppColors.bgOverlay;
+
+  static Color success(BuildContext context) =>
+      isLight(context) ? AppColorsLight.success : AppColors.success;
+
+  static Color warning(BuildContext context) =>
+      isLight(context) ? AppColorsLight.warning : AppColors.warning;
+
+  static Color error(BuildContext context) =>
+      isLight(context) ? AppColorsLight.error : AppColors.error;
+
+  static BoxDecoration level1(BuildContext context, {BorderRadius? radius}) => BoxDecoration(
+        color: surface(context),
+        borderRadius: radius,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+        ],
+      );
+
+  static BoxDecoration level2(BuildContext context, {BorderRadius? radius}) => BoxDecoration(
+        color: surfaceRaised(context),
+        borderRadius: radius,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      );
+
+  static BoxDecoration overlay(BuildContext context, {BorderRadius? radius}) => BoxDecoration(
+        color: bgOverlay(context),
+        borderRadius: radius ?? AppRadius.sheetRadius,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x40000000),
+            blurRadius: 24,
+            offset: Offset(0, -8),
+          ),
+        ],
+      );
+
   static ThemeData get darkThemeData {
     const colorScheme = ColorScheme.dark(
       surface: AppColors.bgSurface,
@@ -304,13 +320,13 @@ class AppTheme {
       scaffoldBackgroundColor: AppColors.bgBase,
       colorScheme: colorScheme,
       fontFamily: AppTypography.fontFamily,
-      textTheme: const TextTheme(
-        headlineMedium: AppTypography.display, // screen titles
-        titleLarge: AppTypography.heading, // preset names, section headers
-        bodyLarge: AppTypography.body, // primary copy
-        bodySmall: AppTypography.bodySecondary, // metadata, package names
-        labelSmall: AppTypography.label, // tabs, small status labels
-        labelLarge: AppTypography.button, // button labels
+      textTheme: TextTheme(
+        headlineMedium: AppTypography.display.copyWith(color: AppColors.textPrimary),
+        titleLarge: AppTypography.heading.copyWith(color: AppColors.textPrimary),
+        bodyLarge: AppTypography.body.copyWith(color: AppColors.textPrimary),
+        bodySmall: AppTypography.bodySecondary.copyWith(color: AppColors.textSecondary),
+        labelSmall: AppTypography.label.copyWith(color: AppColors.textSecondary),
+        labelLarge: AppTypography.button.copyWith(color: AppColors.textPrimary),
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.bgBase,

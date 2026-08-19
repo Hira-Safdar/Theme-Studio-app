@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart'; // debugPrint ke liye
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Device par real installed (launchable) app ka minimal record --
@@ -77,10 +77,6 @@ class NativeBridgeService {
   /// [appLabel] Home Screen par dikhne wala naam
   /// [iconFilePath] ek real PNG file ka path (asset ya custom, dono ko
   /// pehle IconPackService se file path me convert karna hoga)
-  ///
-  /// NOTE: Ye system ka "Add to Home Screen" confirmation dialog dikhayega.
-  /// User ko manually confirm karna padega -- ye Android security policy hai,
-  /// isko skip nahi kiya ja sakta.
   Future<bool> createIconShortcut({
     required String packageName,
     required String appLabel,
@@ -240,11 +236,6 @@ class NativeBridgeService {
   /// (Open-Meteo se) cache karta hai, wahi yahan se padhte hain -- koi naya
   /// network call nahi, sirf cached values. Fetch abhi tak na hui ho to
   /// sab null/khaali milte hain -- caller "--°"/loading state dikhaye.
-  ///
-  /// NOTE: `hourly` baaki keys jaisi plain String nahi -- ye ek List of
-  /// maps hai (har ghante ka time/temp/condition), isliye poore result ko
-  /// ek hi type mein blindly cast nahi kar sakte, har key ko uske apne
-  /// type ke hisaab se nikaalna padta hai.
   Future<Map<String, dynamic>> getWeatherSnapshot() async {
     if (!Platform.isAndroid) return {};
     try {

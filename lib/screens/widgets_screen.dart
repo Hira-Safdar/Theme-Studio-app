@@ -9,19 +9,6 @@ import '../services/native_bridge_service.dart';
 import 'notes_editor_screen.dart';
 import 'weather_location_screen.dart';
 
-/// IMPORTANT: Flutter khud "Home Screen widget" nahi bana sakta.
-/// Home Screen widgets 100% native Android cheez hain (AppWidgetProvider),
-/// jo Kotlin/XML me define hote hain. Flutter side sirf:
-///   1. Widget ka data/config decide karta hai (kaunsa widget, kaunsi
-///      style, kaunsa mode -- dark/light)
-///   2. requestPinAppWidget() call karke user ko "Add to Home Screen" ka
-///      prompt deta hai
-/// Actual widget draw karna, update karna -- sab kaam native
-/// AppWidgetProvider + RemoteViews karta hai.
-
-/// Style + mode ek hi jagah se poore widget-family (Battery/Clock/Weather/
-/// Calendar/Notes) par apply hote hain -- Icon Changer ke "Auto" tab jaisa
-/// hi pattern (ek shared control, sab par asar).
 const List<String> widgetStyleOptions = ['minimal', 'gradient', 'neon'];
 const List<String> widgetModeOptions = ['dark', 'light'];
 
@@ -410,7 +397,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                           color: color,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: isSelected ? AppColors.textPrimary : AppColors.bgSurfaceRaised,
+                            color: isSelected ? AppTheme.textPrimary(context) : AppTheme.surfaceRaised(context),
                             width: 2,
                           ),
                         ),
@@ -678,7 +665,7 @@ class _CompactWidgetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: AppElevation.level1(radius: AppRadius.mdRadius),
+      decoration: AppTheme.level1(context, radius: AppRadius.mdRadius),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -693,7 +680,7 @@ class _CompactWidgetCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   if (footnoteIcon != null)
-                    Icon(footnoteIcon, size: 11, color: AppColors.textSecondary),
+                    Icon(footnoteIcon, size: 11, color: AppTheme.textSecondary(context)),
                   const SizedBox(width: 3),
                   Flexible(
                     child: Text(
@@ -724,9 +711,9 @@ class _CompactWidgetCard extends StatelessWidget {
                 ),
                 GestureDetector(
                   onTap: onRemove,
-                  child: const Padding(
-                    padding: EdgeInsets.only(left: 4),
-                    child: Icon(Icons.close, size: 12, color: AppColors.textSecondary),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Icon(Icons.close, size: 12, color: AppTheme.textSecondary(context)),
                   ),
                 ),
               ],
@@ -750,7 +737,7 @@ class _PinPill extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (status) {
       case WidgetPinStatus.requesting:
-        return const SizedBox(
+        return SizedBox(
           height: 30,
           child: Center(
             child: SizedBox(
@@ -758,7 +745,7 @@ class _PinPill extends StatelessWidget {
               height: 14,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation(AppColors.textSecondary),
+                valueColor: AlwaysStoppedAnimation(AppTheme.textSecondary(context)),
               ),
             ),
           ),
@@ -771,13 +758,13 @@ class _PinPill extends StatelessWidget {
             padding: EdgeInsets.zero,
             textStyle: const TextStyle(fontSize: 11),
           ),
-          child: const Row(
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.check, size: 13, color: AppColors.success),
-              SizedBox(width: 4),
-              Text('Pinned'),
+              Icon(Icons.check, size: 13, color: AppTheme.success(context)),
+              const SizedBox(width: 4),
+              const Text('Pinned'),
             ],
           ),
         );
@@ -795,14 +782,6 @@ class _PinPill extends StatelessWidget {
   }
 }
 
-/// Live-rendered mini preview — demo values only (except Weather's location
-/// footnote and Notes' saved text, which are real). Real widget content
-/// native side (RemoteViews) draw karta hai jab actually pinned ho.
-/// [style] + [mode] ke hisaab se background badalta hai, aur [builder] ko
-/// explicit textColor/secondaryColor/iconColor deta hai -- taake har widget
-/// apne content ko sahi (light-mode par bhi visible) colors se render kare,
-/// AppTypography ke built-in dark-mode color par silently depend kiye
-/// bagair. Native [WidgetStyleHelper] ke 6 combos ka Flutter equivalent.
 class _StyledWidgetPreview extends StatelessWidget {
   const _StyledWidgetPreview({
     required this.style,

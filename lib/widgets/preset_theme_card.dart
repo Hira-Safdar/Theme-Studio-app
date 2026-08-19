@@ -28,11 +28,11 @@ class PresetThemeCard extends StatelessWidget {
   /// [PresetCardStatus.partial]. e.g. "Wallpaper couldn't be applied".
   final String? errorSummary;
 
-  Color get _swatchColor {
+  Color _swatchColor(BuildContext context) {
     try {
       return Color(int.parse(theme.accentColorHex.replaceFirst('#', '0xFF')));
     } catch (_) {
-      return AppColors.accentPrimary;
+      return AppTheme.accentPrimary(context);
     }
   }
 
@@ -41,6 +41,7 @@ class PresetThemeCard extends StatelessWidget {
     final subtitle = 'Icon pack: ${theme.iconPackId}';
 
     return Semantics(
+
       // Partial-failure state must announce both outcomes to screen
       // readers, not just the visible icon (§6).
       label: status == PresetCardStatus.partial
@@ -55,10 +56,10 @@ class PresetThemeCard extends StatelessWidget {
           child: Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.md),
             padding: const EdgeInsets.all(AppSpacing.cardPadding),
-            decoration: AppElevation.level1(radius: AppRadius.lgRadius),
+            decoration: AppTheme.level1(context, radius: AppRadius.lgRadius),
             child: Row(
               children: [
-                _MoodSwatch(color: _swatchColor),
+                _MoodSwatch(color: _swatchColor(context)),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
@@ -103,29 +104,25 @@ class _StatusIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (status) {
       case PresetCardStatus.idle:
-        return const Icon(Icons.chevron_right, color: AppColors.textSecondary);
+        return Icon(Icons.chevron_right, color: AppTheme.textSecondary(context));
 
       case PresetCardStatus.applying:
         return const SizedBox(
           width: 20,
           height: 20,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation(AppColors.accentPrimary),
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2),
         );
 
       case PresetCardStatus.applied:
-        return const Icon(Icons.check_circle, color: AppColors.success);
+        return Icon(Icons.check_circle, color: AppTheme.success(context));
 
       case PresetCardStatus.partial:
-        // Never collapsed to one icon — show both outcomes side by side.
-        return const Row(
+        return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle, color: AppColors.success, size: 18),
-            SizedBox(width: 4),
-            Icon(Icons.error, color: AppColors.error, size: 18),
+            Icon(Icons.check_circle, color: AppTheme.success(context), size: 18),
+            const SizedBox(width: 4),
+            Icon(Icons.error, color: AppTheme.error(context), size: 18),
           ],
         );
     }

@@ -19,7 +19,7 @@ class SettingsGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.bgSurface,
+        color: AppTheme.surface(context),
         borderRadius: AppRadius.mdRadius,
       ),
       child: Column(
@@ -88,7 +88,7 @@ class SettingsRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: AppColors.textSecondary),
+            Icon(icon, size: 20, color: AppTheme.textSecondary(context)),
             const SizedBox(width: AppSpacing.md),
             Expanded(child: Text(label, style: AppTypography.body)),
             if (_isToggleRow)
@@ -96,7 +96,7 @@ class SettingsRow extends StatelessWidget {
             else if (trailingText != null)
               Text(trailingText!, style: AppTypography.bodySecondary)
             else if (onTap != null)
-              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+              Icon(Icons.chevron_right, color: AppTheme.textSecondary(context)),
           ],
         ),
       ),

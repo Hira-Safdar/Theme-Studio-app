@@ -1,21 +1,9 @@
-// lib/widgets/theme_grid_tile.dart
-//
-// Home screen's theme tile, restyled to match the Wallpaper screen's
-// visual language: a real image thumbnail you tap (not a plain text row).
-// Shows the theme's actual wallpaper as the tile background, with the
-// name + accent dot legible over a bottom gradient, and a small status
-// badge (applying/applied/partial) in the corner -- same status concept
-// as the old PresetThemeCard, just presented as a grid tile.
-
 import 'package:flutter/material.dart';
 import '../models/theme_model.dart';
 import '../services/icon_pack_service.dart';
 import '../theme/app_theme.dart';
 import 'preset_theme_card.dart' show PresetCardStatus;
 
-/// Sirf 2 sample icons -- tile chhota hai (2-column grid), zyada icons
-/// cramped/messy lagenge. ThemePreviewScreen (poore-screen wala preview)
-/// mein 4 dikhte hain, wahan jagah zyada hai.
 const List<String> _tilePreviewIconKeys = ['browser', 'calculator'];
 
 class ThemeGridTile extends StatelessWidget {
@@ -54,10 +42,8 @@ class ThemeGridTile extends StatelessWidget {
               Image.asset(
                 theme.wallpaperAssetPath,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(color: AppColors.bgSurfaceRaised),
+                errorBuilder: (_, __, ___) => Container(color: AppTheme.surfaceRaised(context)),
               ),
-              // Bottom gradient -- keeps the name legible over any wallpaper,
-              // same trick used in the phone-frame preview's status bar.
               Positioned(
                 left: 0,
                 right: 0,
@@ -116,14 +102,11 @@ class ThemeGridTile extends StatelessWidget {
                     child: Icon(
                       isFavorite ? Icons.favorite : Icons.favorite_border,
                       size: 18,
-                      color: isFavorite ? AppColors.error : Colors.white,
+                      color: isFavorite ? AppTheme.error(context) : Colors.white,
                     ),
                   ),
                 ),
               ),
-              // Is theme ke icon pack ke 2 real sample icons -- taake grid
-              // mein sirf wallpaper nahi, icon-style bhi ek nazar mein
-              // pata chale.
               Positioned(
                 left: AppSpacing.sm,
                 right: AppSpacing.sm,
@@ -187,12 +170,10 @@ class _StatusBadge extends StatelessWidget {
         );
         break;
       case PresetCardStatus.applied:
-        child = const Icon(Icons.check_circle, color: AppColors.success, size: 18);
+        child = Icon(Icons.check_circle, color: AppTheme.success(context), size: 18);
         break;
       case PresetCardStatus.partial:
-        // Partial-failure must stay visually distinct from a plain
-        // success check (§6 accessibility rule from the original spec).
-        child = const Icon(Icons.error, color: AppColors.error, size: 18);
+        child = Icon(Icons.error, color: AppTheme.error(context), size: 18);
         break;
     }
     return Container(

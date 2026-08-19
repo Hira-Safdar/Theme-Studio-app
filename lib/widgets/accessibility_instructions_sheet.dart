@@ -20,7 +20,7 @@ class AccessibilityInstructionsSheet extends StatefulWidget {
   static Future<void> show(BuildContext context, {required VoidCallback onOpenSettings}) {
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.bgSurfaceRaised,
+      backgroundColor: AppTheme.surfaceRaised(context),
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: AppRadius.sheetRadius),
       builder: (_) => AccessibilityInstructionsSheet(onOpenSettings: onOpenSettings),
@@ -76,7 +76,7 @@ class _AccessibilityInstructionsSheetState extends State<AccessibilityInstructio
                 height: 4,
                 margin: const EdgeInsets.only(bottom: AppSpacing.lg),
                 decoration: BoxDecoration(
-                  color: AppColors.borderSubtle,
+                  color: AppTheme.borderSubtle(context),
                   borderRadius: AppRadius.smRadius,
                 ),
               ),
@@ -141,9 +141,9 @@ class _MockSettingsList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.bgSurface,
+        color: AppTheme.surface(context),
         borderRadius: AppRadius.mdRadius,
-        border: Border.all(color: AppColors.borderSubtle),
+        border: Border.all(color: AppTheme.borderSubtle(context)),
       ),
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Column(
@@ -181,7 +181,7 @@ class _MockRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: highlighted
-          ? AppColors.accentPrimaryMuted.withValues(alpha: 0.5 * highlightOpacity)
+          ? AppTheme.accentPrimaryMuted(context).withValues(alpha: 0.5 * highlightOpacity)
           : Colors.transparent,
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.lg,
@@ -193,8 +193,8 @@ class _MockRow extends StatelessWidget {
             highlighted ? Icons.apps : Icons.circle_outlined,
             size: 18,
             color: highlighted
-                ? AppColors.accentPrimary.withValues(alpha: highlightOpacity)
-                : AppColors.textSecondary,
+                ? AppTheme.accentPrimary(context).withValues(alpha: highlightOpacity)
+                : AppTheme.textSecondary(context),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -202,7 +202,7 @@ class _MockRow extends StatelessWidget {
               label,
               style: highlighted
                   ? AppTypography.body.copyWith(
-                      color: AppColors.accentPrimary.withValues(alpha: highlightOpacity),
+                      color: AppTheme.accentPrimary(context).withValues(alpha: highlightOpacity),
                       fontWeight: FontWeight.w600,
                     )
                   : AppTypography.body,
@@ -212,10 +212,10 @@ class _MockRow extends StatelessWidget {
             Icon(
               Icons.touch_app,
               size: 18,
-              color: AppColors.accentPrimary.withValues(alpha: highlightOpacity),
+              color: AppTheme.accentPrimary(context).withValues(alpha: highlightOpacity),
             )
           else
-            const Icon(Icons.chevron_right, size: 18, color: AppColors.textSecondary),
+            Icon(Icons.chevron_right, size: 18, color: AppTheme.textSecondary(context)),
         ],
       ),
     );
@@ -236,13 +236,13 @@ class _StepRow extends StatelessWidget {
           width: 22,
           height: 22,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: AppColors.accentPrimaryMuted,
+          decoration: BoxDecoration(
+            color: AppTheme.accentPrimaryMuted(context),
             shape: BoxShape.circle,
           ),
           child: Text(
             '$number',
-            style: AppTypography.label.copyWith(color: AppColors.accentPrimary),
+            style: AppTypography.label.copyWith(color: AppTheme.accentPrimary(context)),
           ),
         ),
         const SizedBox(width: AppSpacing.md),

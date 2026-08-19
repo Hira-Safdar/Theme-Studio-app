@@ -60,27 +60,11 @@ class ThemeController extends ChangeNotifier {
       debugPrint('ThemeController: Icon pack save error: $e');
     }
 
-    // Step 3: Jitni bhi installed apps iss pack mein ek bundled icon se
-    // match hoti hain, un sab ke Home Screen shortcuts bhi turant request
-    // karo.
-    //
-    // IMPORTANT LIMITATION: Android per-shortcut apna khud ka system
-    // confirmation dialog dikhata hai -- koi bulk-approve tareeqa exist
-    // nahi karta (non-launcher app ke liye ye Android security policy
-    // hai, code se bypass nahi ho sakti). Matlab agar N apps match hui to
-    // N dialogs ek ke baad ek aayenge jinhe user ko manually confirm karna
-    // hoga. Isliye ye loop sequential hai (ek-ek karke await), parallel
-    // nahi -- taake dialogs overlap na karein.
+    // Step 3: Installed apps ko bundled icon se match karke shortcuts request karo.
     try {
       final installedApps = await NativeBridgeService.instance.getInstalledApps();
       final matches = <({String packageName, String label, String iconKey})>[];
       for (final app in installedApps) {
-        // Sirf system apps (ROM ka hissa, pre-installed) tak matching
-        // limit karte hain. Emulators (aur kuch real devices) par bohat
-        // saari third-party/test apps installed hoti hain jinke naam ya
-        // keywords real system apps se milte-julte hote hain (e.g. do
-        // "Browser" apps) -- unhe bhi match kar lena galat/duplicate
-        // shortcuts bana deta.
         if (!app.isSystemApp) continue;
 
         final iconKey = IconMatchingService.instance.guessIconKey(app.packageName, app.label);
@@ -133,5 +117,10 @@ class ThemeController extends ChangeNotifier {
   Future<String?> getActiveIconPackId() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('active_icon_pack');
+  }
+
+  void setActiveTheme(String? id) {
+    activeThemeId = id;
+    notifyListeners();
   }
 }
