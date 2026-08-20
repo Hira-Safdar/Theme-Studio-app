@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'screens/wallpaper_screen.dart';
-import 'screens/icon_changer_screen.dart';
+import 'screens/online_icon_packs_screen.dart';
 import 'screens/widgets_screen.dart';
 import 'screens/control_center_screen.dart';
 import 'screens/settings_screen.dart';
@@ -88,18 +88,21 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   int _index = 0;
 
-  final _screens = const [
-    HomeScreen(),
-    WallpaperScreen(),
-    IconChangerScreen(),
-    WidgetsScreen(),
-    ControlCenterScreen(),
-  ];
+  Widget _buildBody() {
+    switch (_index) {
+      case 0: return const HomeScreen();
+      case 1: return const WallpaperScreen();
+      case 2: return const OnlineIconPacksScreen();
+      case 3: return const WidgetsScreen();
+      case 4: return const ControlCenterScreen();
+      default: return const HomeScreen();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _index, children: _screens),
+      body: _buildBody(),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),

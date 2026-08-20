@@ -150,12 +150,14 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
   }
 
   Future<void> _saveCustomization() async {
-    await NativeBridgeService.instance.saveWidgetCustomization(
-      fontSize: _widgetFontSize,
-      textColorHex: '#${_widgetTextColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
-      bgOpacity: _widgetBgOpacity,
-      cornerRadius: _widgetCornerRadius,
-    );
+    try {
+      await NativeBridgeService.instance.saveWidgetCustomization(
+        fontSize: _widgetFontSize,
+        textColorHex: '#${_widgetTextColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+        bgOpacity: _widgetBgOpacity,
+        cornerRadius: _widgetCornerRadius,
+      );
+    } catch (_) {}
   }
 
   /// Android koi public API nahi deta jisse ek app apne khud ke pinned

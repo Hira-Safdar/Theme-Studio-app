@@ -26,11 +26,13 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   Map<String, List<String>> _wallpapersByCategory = {};
   bool _loading = true;
   bool _applying = false;
+  bool _showFavoritesOnly = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: _categories.length + 2, vsync: this);
+    _tabController.index = 1;
     _loadAssets();
     WallpaperFavoritesService.instance.load();
   }
@@ -132,19 +134,20 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     final target = await WallpaperPreviewScreen.show(
       context,
       wallpaperImageProvider(networkUrl: wallpaper.thumbnailUrl),
+      downloadUrl: wallpaper.url,
     );
     if (target == null || !mounted) return;
-    setState(() => _applying = true);
+
+    final localPath = WallpaperPreviewScreen.lastDownloadedPath;
+    if (localPath == null) {
+      _showResult(false);
+      return;
+    }
     try {
-      final localPath = await DownloadService.instance.download(wallpaper.url);
-      if (localPath == null) {
-        _showResult(false);
-        return;
-      }
       final ok = await NativeBridgeService.instance.setWallpaper(localPath, target: target);
       _showResult(ok);
-    } finally {
-      if (mounted) setState(() => _applying = false);
+    } catch (_) {
+      _showResult(false);
     }
   }
 
@@ -161,15 +164,18 @@ class _WallpaperScreenState extends State<WallpaperScreen>
               isScrollable: true,
               tabs: [
                 Tab(text: tr('my_tab')),
-                ..._categories.map((c) => Tab(text: _titleCase(c))),
                 Tab(text: tr('online_tab')),
+                ..._categories.map((c) => Tab(text: titleCase(c))),
               ],
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.add_photo_alternate),
-                onPressed: _applying ? null : _importFromGallery,
-                tooltip: tr('import_gallery'),
+                icon: Icon(
+                  _showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
+                  color: _showFavoritesOnly ? AppTheme.error(context) : null,
+                ),
+                tooltip: tr('favorites_filter'),
+                onPressed: () => setState(() => _showFavoritesOnly = !_showFavoritesOnly),
               ),
             ],
           ),
@@ -180,7 +186,9 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                   children: [
                     _MyWallpapersGrid(
                       onApply: _previewThenApplyFromMy,
+                      onImport: _importFromGallery,
                     ),
+                    _OnlineWallpaperGrid(onApply: _previewThenApplyFromOnline),
                     ..._categories.map((category) {
                       final wallpapers = _wallpapersByCategory[category] ?? [];
                       if (wallpapers.isEmpty) {
@@ -191,9 +199,9 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                       return _AssetWallpaperGrid(
                         wallpapers: wallpapers,
                         onApply: _previewThenApplyFromAsset,
+                        showFavoritesOnly: _showFavoritesOnly,
                       );
                     }),
-                    _OnlineWallpaperGrid(onApply: _previewThenApplyFromOnline),
                   ],
                 ),
         );
@@ -202,18 +210,45 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   }
 }
 
-String _titleCase(String s) {
-  if (s.isEmpty) return s;
-  return s[0].toUpperCase() + s.substring(1);
-}
-
 class _AssetWallpaperGrid extends StatelessWidget {
-  const _AssetWallpaperGrid({required this.wallpapers, required this.onApply});
+  const _AssetWallpaperGrid({
+    required this.wallpapers,
+    required this.onApply,
+    required this.showFavoritesOnly,
+  });
   final List<String> wallpapers;
   final Future<void> Function(String) onApply;
+  final bool showFavoritesOnly;
 
   @override
   Widget build(BuildContext context) {
+    final displayed = showFavoritesOnly
+        ? wallpapers.where((path) {
+            final id = 'asset_${path.hashCode}';
+            return WallpaperFavoritesService.instance.isFavorite(id);
+          }).toList()
+        : wallpapers;
+
+    if (displayed.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.favorite_border, size: 48, color: AppTheme.textSecondary(context)),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                tr('favorites_empty'),
+                style: AppTypography.bodySecondary,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return GridView.builder(
       padding: const EdgeInsets.all(AppSpacing.md),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -222,9 +257,9 @@ class _AssetWallpaperGrid extends StatelessWidget {
         mainAxisSpacing: AppSpacing.md,
         childAspectRatio: 2 / 3,
       ),
-      itemCount: wallpapers.length,
+      itemCount: displayed.length,
       itemBuilder: (context, i) {
-        final path = wallpapers[i];
+        final path = displayed[i];
         final id = 'asset_${path.hashCode}';
         final isFav = WallpaperFavoritesService.instance.isFavorite(id);
         return GestureDetector(
@@ -264,8 +299,9 @@ class _AssetWallpaperGrid extends StatelessWidget {
 }
 
 class _MyWallpapersGrid extends StatelessWidget {
-  const _MyWallpapersGrid({required this.onApply});
+  const _MyWallpapersGrid({required this.onApply, required this.onImport});
   final Future<void> Function(String) onApply;
+  final VoidCallback onImport;
 
   @override
   Widget build(BuildContext context) {
@@ -277,9 +313,19 @@ class _MyWallpapersGrid extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.photo_library_outlined, size: 48, color: AppTheme.textSecondary(context)),
-              const SizedBox(height: AppSpacing.md),
-              Text(tr('my_wallpapers_empty'), textAlign: TextAlign.center, style: AppTypography.bodySecondary),
+              Icon(Icons.photo_library_outlined, size: 56, color: AppTheme.textSecondary(context)),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                tr('my_wallpapers_empty'),
+                textAlign: TextAlign.center,
+                style: AppTypography.bodySecondary,
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              FilledButton.icon(
+                onPressed: onImport,
+                icon: const Icon(Icons.add_photo_alternate, size: 20),
+                label: Text(tr('import_gallery')),
+              ),
             ],
           ),
         ),
@@ -375,12 +421,17 @@ class _OnlineWallpaperGridState extends State<_OnlineWallpaperGrid> {
       _loading = true;
       _hasSearched = true;
     });
-    final results = await DownloadService.instance.search(query);
-    if (!mounted) return;
-    setState(() {
-      _wallpapers = results;
-      _loading = false;
-    });
+    try {
+      final results = await DownloadService.instance.search(query);
+      if (!mounted) return;
+      setState(() {
+        _wallpapers = results;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   @override

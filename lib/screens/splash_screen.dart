@@ -45,24 +45,13 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _initialize() async {
-    // Real init work goes here: check accessibility-service status,
-    // load cached preset list, etc. All of this must work fully offline —
-    // never block this screen on a network call.
-    final stopwatch = Stopwatch()..start();
-
-    // Show the "Setting things up…" label only if init runs past ~1.5s,
-    // per spec — normal runs should never show it.
     Timer? statusTimer = Timer(const Duration(milliseconds: 1500), () {
       if (mounted) setState(() => _showStatus = true);
     });
 
-
-    // await themeController.loadCachedPresets();
-    // await accessibilityStatus.check();
     await Future.delayed(const Duration(milliseconds: 2500));
 
     statusTimer.cancel();
-    stopwatch.stop();
 
     if (!mounted) return;
 

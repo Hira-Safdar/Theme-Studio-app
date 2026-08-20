@@ -1,15 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import '../models/online_icon_pack.dart';
 import '../services/app_strings.dart';
 import '../services/icon_matching_service.dart';
 import '../services/icon_pack_service.dart';
 import '../services/native_bridge_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/disclosure_banner.dart';
 import '../widgets/icon_list_row.dart';
-import '../widgets/pack_selector.dart';
-import 'online_icon_packs_screen.dart';
 
 /// "Auto" -- koi bundled asset nahi, koi manual pick bhi nahi. Har
 /// installed app ka REAL icon leke native side par ek consistent shape +
@@ -47,14 +48,7 @@ String _categoryDisplayName(String id) {
 /// hain, koi extra mapping nahi chahiye.
 const List<String> autoShapeOptions = ['circle', 'squircle'];
 
-String _shapeDisplayName(String id) => id == 'circle' ? 'Circle' : 'Squircle';
-
-/// Auto tab ke do design "styles" -- dono same shape+accent controls use
-/// karte hain, sirf background/border treatment alag hota hai (native
-/// side [applyDuotoneTheme] vs [applyNeonGlassTheme]).
 const List<String> autoStyleOptions = ['classic', 'neon'];
-
-String _autoStyleDisplayName(String id) => id == 'neon' ? 'Neon Glass' : 'Classic';
 
 /// Auto tab ke liye accent color presets -- AppColors.moodSwatches "Home
 /// preset" ke liye reserved hain (dekho app_theme.dart), isliye yahan alag
@@ -76,13 +70,24 @@ String _colorToHex(Color c) =>
 /// dikhti hai.
 
 class IconChangerScreen extends StatefulWidget {
-  const IconChangerScreen({super.key});
+  const IconChangerScreen({super.key, this.initialOnlinePack, this.initialBundledPack});
+  final OnlineIconPack? initialOnlinePack;
+  final String? initialBundledPack;
   @override
   State<IconChangerScreen> createState() => _IconChangerScreenState();
 }
 
 class _IconChangerScreenState extends State<IconChangerScreen> {
-  String activeCategory = categoryTabs.first;
+  OnlineIconPack? _onlinePack;
+  String get _onlinePackCategoryId => _onlinePack != null ? 'online_${_onlinePack!.id}' : '';
+  bool get _isOnlinePackTab => _onlinePack != null && activeCategory == _onlinePackCategoryId;
+
+  String _effectiveCategoryDisplayName(String id) {
+    if (_onlinePack != null && id == _onlinePackCategoryId) return _onlinePack!.name;
+    return _categoryDisplayName(id);
+  }
+
+  String activeCategory = '';
   final _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -93,27 +98,23 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   final Map<String, String> _customIconPaths = {};
   final Map<String, Uint8List> _oldIconBytes = {};
 
-  // "Auto" tab state -- shape, style, ya accent badalte hi saari preview
-  // icons dobara generate hoti hain.
-  String _autoShape = autoShapeOptions.first;
-  String _autoStyle = autoStyleOptions.first;
-  Color _autoAccent = autoAccentPresets.first;
-  bool _loadingAutoPreviews = false;
+  final String _autoShape = autoShapeOptions.first;
+  final String _autoStyle = autoStyleOptions.first;
+  final Color _autoAccent = autoAccentPresets.first;
   final Map<String, String> _autoPreviewPaths = {};
-  Timer? _autoDebounce;
+
+  final Map<String, String> _onlineIconCache = {};
+  bool _loadingOnlineIcons = false;
 
   final Set<String> _selectedPackages = {};
 
   bool get _isCustomTab => activeCategory == customCategoryId;
   bool get _isAutoTab => activeCategory == autoCategoryId;
 
-  /// Kya [app] ke paas ABHI ke active tab ke hisaab se koi dikhane wala
-  /// icon maujood hai -- Custom tab par user-picked icon, Auto tab par
-  /// generated+cached themed icon, bundled tabs (Cartoon/Flat colors/Dark
-  /// mode) par guessed iconKey.
   bool _appHasIcon(AppEntry app) {
     if (_isCustomTab) return _customIconPaths[app.packageName] != null;
     if (_isAutoTab) return _autoPreviewPaths[app.packageName] != null;
+    if (_isOnlinePackTab) return _onlinePack!.iconUrls.containsKey(app.packageName);
     return app.iconKey != null;
   }
 
@@ -135,6 +136,15 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   @override
   void initState() {
     super.initState();
+    _onlinePack = widget.initialOnlinePack;
+    if (_onlinePack != null) {
+      activeCategory = _onlinePackCategoryId;
+    } else if (widget.initialBundledPack != null &&
+        categoryTabs.contains(widget.initialBundledPack)) {
+      activeCategory = widget.initialBundledPack!;
+    } else {
+      activeCategory = categoryTabs.first;
+    }
     _loadInstalledApps();
   }
 
@@ -160,8 +170,8 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     _loadExistingCustomIcons();
     _loadOldIcons();
     if (_isAutoTab) _loadAutoPreviews();
-    // Bundled tabs ke liye foran selection update karo (iconKey-based)
-    if (!_isAutoTab && !_isCustomTab) _refreshSelection();
+    if (_isOnlinePackTab) _bulkDownloadOnlineIcons();
+    if (!_isAutoTab && !_isCustomTab && !_isOnlinePackTab) _refreshSelection();
   }
 
   /// Har app ka asal launcher icon native side se fetch karta hai.
@@ -184,6 +194,26 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
         }
       }
     });
+  }
+
+  Future<void> _downloadOnlineIcon(String packageName) async {
+    if (_onlinePack == null) return;
+    final url = _onlinePack!.iconUrls[packageName];
+    if (url == null || _onlineIconCache.containsKey(packageName)) return;
+
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/online_icon_${_onlinePack!.id}_$packageName.png');
+        await file.writeAsBytes(response.bodyBytes);
+        if (mounted) {
+          setState(() {
+            _onlineIconCache[packageName] = file.path;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadExistingCustomIcons() async {
@@ -212,7 +242,6 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   /// mein teeno shamil hain isliye purani generation reuse nahi hoti.
   Future<void> _loadAutoPreviews() async {
     if (_apps.isEmpty) return;
-    setState(() => _loadingAutoPreviews = true);
 
     final accentHex = _colorToHex(_autoAccent);
     final results = await Future.wait(_apps.map((app) async {
@@ -235,19 +264,30 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
       _autoPreviewPaths
         ..clear()
         ..addEntries(results.whereType<MapEntry<String, String>>());
-      _loadingAutoPreviews = false;
     });
-    // Auto previews load hone ke baad selection refresh karo
     _refreshSelection();
   }
 
-  void _onCategoryChanged(String id) {
-    setState(() => activeCategory = id);
-    if (id == autoCategoryId && _autoPreviewPaths.isEmpty && !_loadingAutoPreviews) {
-      _loadAutoPreviews();
+  Future<void> _bulkDownloadOnlineIcons() async {
+    if (_onlinePack == null) return;
+    setState(() => _loadingOnlineIcons = true);
+    final entries = _onlinePack!.iconUrls.entries.toList();
+    await Future.wait(entries.map((e) async {
+      if (_onlineIconCache.containsKey(e.key)) return;
+      try {
+        final response = await http.get(Uri.parse(e.value)).timeout(const Duration(seconds: 10));
+        if (response.statusCode == 200) {
+          final dir = await getTemporaryDirectory();
+          final file = File('${dir.path}/online_icon_${_onlinePack!.id}_${e.key}.png');
+          await file.writeAsBytes(response.bodyBytes);
+          _onlineIconCache[e.key] = file.path;
+        }
+      } catch (_) {}
+    }));
+    if (mounted) {
+      setState(() => _loadingOnlineIcons = false);
+      _refreshSelection();
     }
-    // Tab change par selection refresh karo -- sirf available icons wale apps
-    _refreshSelection();
   }
 
   /// Selection ko refresh karta hai -- sirf wo apps select rehte hain
@@ -264,36 +304,8 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
 
   @override
   void dispose() {
-    _autoDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
-  }
-
-  void _onAutoShapeChanged(String shape) {
-    setState(() => _autoShape = shape);
-    _debounceAutoPreviews();
-  }
-
-  void _onAutoStyleChanged(String style) {
-    setState(() => _autoStyle = style);
-    _debounceAutoPreviews();
-  }
-
-  void _onAutoAccentChanged(Color color) {
-    setState(() => _autoAccent = color);
-    _debounceAutoPreviews();
-  }
-
-  /// Auto tab ke controls (shape/style/accent) mein se koi bhi change hone
-  /// par turant _loadAutoPreviews() call karne ke bajaye 250ms rukte hain --
-  /// agar user tezi se multiple changes kare (e.g. color picker drag kare)
-  /// to har change par poori list regenerate karna wasteful hota, debounce
-  /// se sirf aakhri change par ek baar hota hai.
-  void _debounceAutoPreviews() {
-    _autoDebounce?.cancel();
-    _autoDebounce = Timer(const Duration(milliseconds: 250), () {
-      if (mounted && _isAutoTab) _loadAutoPreviews();
-    });
   }
 
   void _toggleSelected(String packageName, bool? value) {
@@ -327,7 +339,13 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
       );
       return;
     }
-    if (!_isCustomTab && !_isAutoTab && app.iconKey == null) {
+    if (_isOnlinePackTab && !_onlinePack!.iconUrls.containsKey(app.packageName)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No icon in this pack for ${app.label}')),
+      );
+      return;
+    }
+    if (!_isCustomTab && !_isAutoTab && !_isOnlinePackTab && app.iconKey == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No bundled icon for ${app.label} -- try Auto or Custom tab')),
       );
@@ -339,9 +357,19 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     try {
       final String filePath;
       if (_isCustomTab) {
-        filePath = customPath!; // already ek real file path hai
+        filePath = customPath!;
       } else if (_isAutoTab) {
-        filePath = autoPath!; // already ek real (cached) file path hai
+        filePath = autoPath!;
+      } else if (_isOnlinePackTab) {
+        final cached = _onlineIconCache[app.packageName];
+        if (cached == null) {
+          await _downloadOnlineIcon(app.packageName);
+          final downloaded = _onlineIconCache[app.packageName];
+          if (downloaded == null) throw Exception('Failed to download icon');
+          filePath = downloaded;
+        } else {
+          filePath = cached;
+        }
       } else {
         final assetPath =
             IconPackService.instance.bundledAssetPath(activeCategory, app.iconKey!);
@@ -417,61 +445,17 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Ek hi baar compute karte hain -- ListView.builder ke itemBuilder ke
-    // andar dobara sort karna har row ke liye wasteful hota.
     final sortedApps = _sortedApps;
+    final packName = _onlinePack != null
+        ? _onlinePack!.name
+        : _effectiveCategoryDisplayName(activeCategory);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(tr('icon_changer_title')),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.palette_outlined),
-            tooltip: tr('online_icon_packs'),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const OnlineIconPacksScreen()),
-            ),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: Text(packName)),
       body: Column(
         children: [
-          const DisclosureBanner(
-            message: 'Applying an icon creates a Home Screen shortcut. '
-                'Android will confirm before adding it.',
-          ),
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.screenPadding),
-            child: PackSelector(
-              options: categoryTabs,
-              selected: activeCategory,
-              onChanged: _onCategoryChanged,
-              labelBuilder: _categoryDisplayName,
-            ),
-          ),
-          if (_isAutoTab) _AutoControls(
-            shape: _autoShape,
-            style: _autoStyle,
-            accent: _autoAccent,
-            onShapeChanged: _onAutoShapeChanged,
-            onStyleChanged: _onAutoStyleChanged,
-            onAccentChanged: _onAutoAccentChanged,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _loadingApps ? null : _applyAllSelected,
-                icon: const Icon(Icons.done_all),
-                label: Text('Apply All (${_selectedPackages.length} selected)'),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
           if (!_loadingApps && _apps.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+              padding: const EdgeInsets.all(AppSpacing.screenPadding),
               child: TextField(
                 controller: _searchController,
                 onChanged: (v) => setState(() => _searchQuery = v),
@@ -498,140 +482,93 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
                 ),
               ),
             ),
-          if (!_loadingApps && _apps.isNotEmpty)
-            const SizedBox(height: AppSpacing.sm),
+          if (_isOnlinePackTab && _loadingOnlineIcons)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(AppTheme.accentPrimary(context)),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  const Text(
+                    'Downloading icons...',
+                    style: AppTypography.bodySecondary,
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: _loadingApps
                 ? const Center(child: CircularProgressIndicator())
                 : _apps.isEmpty
                     ? const Center(child: Text('No installed apps found'))
-                    : _sortedApps.isEmpty
+                    : sortedApps.isEmpty
                         ? Center(child: Text(tr('search_no_results')))
                         : ListView.builder(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                        itemCount: sortedApps.length,
-                        itemBuilder: (context, i) {
-                          final app = sortedApps[i];
-                          final customPath = _customIconPaths[app.packageName];
-                          final autoPath = _autoPreviewPaths[app.packageName];
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.screenPadding,
+                            ),
+                            itemCount: sortedApps.length,
+                            itemBuilder: (context, i) {
+                              final app = sortedApps[i];
+                              final customPath = _customIconPaths[app.packageName];
+                              final autoPath = _autoPreviewPaths[app.packageName];
 
-                          // Bundled tabs (Cartoon/Flat colors/Dark mode) hamesha
-                          // apna fixed asset dikhate hain. Custom tab par sirf
-                          // custom-picked icon (agar set hai). Auto tab par
-                          // generated+cached themed icon file (agar ban chuki ho).
-                          final String previewPath;
-                          final bool previewIsFile;
-                          if (_isCustomTab) {
-                            previewPath = customPath ?? '';
-                            previewIsFile = customPath != null;
-                          } else if (_isAutoTab) {
-                            previewPath = autoPath ?? '';
-                            previewIsFile = autoPath != null;
-                          } else if (app.iconKey != null) {
-                            previewPath = IconPackService.instance
-                                .bundledAssetPath(activeCategory, app.iconKey!);
-                            previewIsFile = false;
-                          } else {
-                            previewPath = '';
-                            previewIsFile = false;
-                          }
+                              final String previewPath;
+                              final bool previewIsFile;
+                              if (_isCustomTab) {
+                                previewPath = customPath ?? '';
+                                previewIsFile = customPath != null;
+                              } else if (_isAutoTab) {
+                                previewPath = autoPath ?? '';
+                                previewIsFile = autoPath != null;
+                              } else if (_isOnlinePackTab && _onlinePack!.iconUrls.containsKey(app.packageName)) {
+                                final cachedPath = _onlineIconCache[app.packageName];
+                                previewPath = cachedPath ?? '';
+                                previewIsFile = cachedPath != null;
+                              } else if (app.iconKey != null) {
+                                previewPath = IconPackService.instance
+                                    .bundledAssetPath(activeCategory, app.iconKey!);
+                                previewIsFile = false;
+                              } else {
+                                previewPath = '';
+                                previewIsFile = false;
+                              }
 
-                          return IconListRow(
-                            label: app.label,
-                            packageName: app.packageName,
-                            status: _rowStatus[app.packageName] ?? IconRowStatus.idle,
-                            hasCustomIcon: _isCustomTab && customPath != null,
-                            previewPath: previewPath,
-                            previewIsFile: previewIsFile,
-                            canEditIcon: _isCustomTab,
-                            isSelected: _selectedPackages.contains(app.packageName),
-                            oldIconBytes: _oldIconBytes[app.packageName],
-                            onToggleSelected: (value) =>
-                                _toggleSelected(app.packageName, value),
-                            onPickCustomIcon: () => _pickCustomIcon(app),
-                            onApply: () => _applyIcon(app),
-                          );
-                        },
-                      ),
+                              return IconListRow(
+                                label: app.label,
+                                packageName: app.packageName,
+                                status: _rowStatus[app.packageName] ?? IconRowStatus.idle,
+                                hasCustomIcon: _isCustomTab && customPath != null,
+                                previewPath: previewPath,
+                                previewIsFile: previewIsFile,
+                                canEditIcon: _isCustomTab,
+                                isSelected: _selectedPackages.contains(app.packageName),
+                                oldIconBytes: _oldIconBytes[app.packageName],
+                                onToggleSelected: (value) =>
+                                    _toggleSelected(app.packageName, value),
+                                onPickCustomIcon: () => _pickCustomIcon(app),
+                                onApply: () => _applyIcon(app),
+                              );
+                            },
+                          ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// "Auto" tab ke liye shape + style + accent-color controls -- PackSelector
-/// (shape aur style ke liye) + ek chhota accent-swatch row. Jab tak preview
-/// generate ho rahi ho, ek thin progress indicator dikhta hai.
-class _AutoControls extends StatelessWidget {
-  const _AutoControls({
-    required this.shape,
-    required this.style,
-    required this.accent,
-    required this.onShapeChanged,
-    required this.onStyleChanged,
-    required this.onAccentChanged,
-  });
-
-  final String shape;
-  final String style;
-  final Color accent;
-  final ValueChanged<String> onShapeChanged;
-  final ValueChanged<String> onStyleChanged;
-  final ValueChanged<Color> onAccentChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenPadding,
-        0,
-        AppSpacing.screenPadding,
-        AppSpacing.sm,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          PackSelector(
-            options: autoStyleOptions,
-            selected: style,
-            onChanged: onStyleChanged,
-            labelBuilder: _autoStyleDisplayName,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          PackSelector(
-            options: autoShapeOptions,
-            selected: shape,
-            onChanged: onShapeChanged,
-            labelBuilder: _shapeDisplayName,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: autoAccentPresets.map((color) {
-              final isSelected = color.toARGB32() == accent.toARGB32();
-              return Padding(
-                padding: const EdgeInsets.only(right: AppSpacing.sm),
-                child: GestureDetector(
-                  onTap: () => onAccentChanged(color),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected ? AppTheme.textPrimary(context) : Colors.transparent,
-                        width: 2,
-                      ),
-                    ),
-                    child: isSelected
-                        ? const Icon(Icons.check, size: 16, color: Colors.black87)
-                        : null,
-                  ),
-                ),
-              );
-            }).toList(),
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.screenPadding),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _loadingApps ? null : _applyAllSelected,
+                icon: const Icon(Icons.done_all),
+                label: Text('Apply All (${_selectedPackages.length} selected)'),
+              ),
+            ),
           ),
         ],
       ),

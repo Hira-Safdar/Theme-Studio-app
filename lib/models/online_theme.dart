@@ -24,16 +24,4 @@ class OnlineTheme {
     OnlineTheme(id: 'pastel', name: 'Pastel', category: 'abstract', searchQuery: 'pastel aesthetic wallpaper', accentColorValue: 0xFFD8698C),
     OnlineTheme(id: 'city', name: 'City', category: 'cosmic', searchQuery: 'city skyline night wallpaper', accentColorValue: 0xFFE8875A),
   ];
-
-  static List<String> get categories {
-    final cats = <String>{};
-    for (final t in curated) {
-      cats.add(t.category);
-    }
-    return cats.toList();
-  }
-
-  static List<OnlineTheme> byCategory(String cat) {
-    return curated.where((t) => t.category == cat).toList();
-  }
 }

@@ -30,9 +30,6 @@ const Map<String, Map<String, String>> _strings = {
     'control_center_title': 'Control Center',
     'splash_setting_up': 'Setting things up…',
 
-    'home_instruction':
-        'Select a theme — wallpaper and icon pack will be applied together.',
-
     'settings_title': 'Settings',
     'settings_section_general': 'General',
     'settings_section_help': 'Help',
@@ -55,8 +52,6 @@ const Map<String, Map<String, String>> _strings = {
     'favorites_empty': 'No favorites yet — tap the heart icon on a theme.',
     'settings_dark_mode': 'Dark mode',
     'online_tab': 'Online',
-    'online_themes': 'Themes',
-    'online_icon_packs': 'Icon Packs',
     'search_wallpapers_hint': 'Search wallpapers…',
     'all_categories': 'All',
     'my_tab': 'My',
@@ -211,4 +206,9 @@ const Map<String, Map<String, String>> _strings = {
 String tr(String key) {
   final code = LocaleController.instance.languageCode;
   return _strings[code]?[key] ?? _strings['en']?[key] ?? key;
+}
+
+String titleCase(String s) {
+  if (s.isEmpty) return s;
+  return s[0].toUpperCase() + s.substring(1);
 }

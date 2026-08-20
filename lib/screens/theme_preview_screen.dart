@@ -45,7 +45,9 @@ class _ThemePreviewScreenState extends State<ThemePreviewScreen> {
 
   Future<void> _apply() async {
     setState(() => _applying = true);
-    await _controller.applyTheme(widget.theme);
+    try {
+      await _controller.applyTheme(widget.theme);
+    } catch (_) {}
     if (!mounted) return;
 
     final errors = List<String>.from(_controller.lastErrors);

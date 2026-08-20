@@ -46,16 +46,6 @@ class IconPackService {
     return destPath;
   }
 
-  Future<void> removeCustomIcon(String packageName) async {
-    final prefs = await SharedPreferences.getInstance();
-    final path = prefs.getString('custom_icon_$packageName');
-    if (path != null) {
-      final f = File(path);
-      if (await f.exists()) await f.delete();
-      await prefs.remove('custom_icon_$packageName');
-    }
-  }
-
   /// Bundled (asset) icon ko ek real file me convert karta hai, kyunki
   /// Kotlin ki ShortcutManager ko ek file-system path chahiye hota hai,
   /// Flutter asset bundle path nahi chal sakta seedha.

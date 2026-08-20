@@ -48,15 +48,20 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
   }
 
   Future<void> _fetch() async {
-    final results = await DownloadService.instance.search(
-      widget.onlineTheme.searchQuery,
-      perPage: 20,
-    );
-    if (!mounted) return;
-    setState(() {
-      _wallpapers = results;
-      _loading = false;
-    });
+    try {
+      final results = await DownloadService.instance.search(
+        widget.onlineTheme.searchQuery,
+        perPage: 20,
+      );
+      if (!mounted) return;
+      setState(() {
+        _wallpapers = results;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   void _selectWallpaper(OnlineWallpaper wallpaper) {
@@ -65,28 +70,29 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
 
   Future<void> _showPreviewAndApply() async {
     if (_selectedWallpaper == null) return;
-    final target = await WallpaperPreviewScreen.show(
-      context,
-      wallpaperImageProvider(networkUrl: _selectedWallpaper!.url),
-    );
-    if (target == null || !mounted) return;
-    await _apply(target);
-  }
-
-  Future<void> _apply(String target) async {
-    setState(() => _applying = true);
-
     try {
-      final localPath = await DownloadService.instance.download(_selectedWallpaper!.url);
+      final target = await WallpaperPreviewScreen.show(
+        context,
+        wallpaperImageProvider(networkUrl: _selectedWallpaper!.url),
+        downloadUrl: _selectedWallpaper!.url,
+      );
+      if (target == null || !mounted) return;
+
+      final localPath = WallpaperPreviewScreen.lastDownloadedPath;
       if (localPath == null) {
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to download wallpaper')),
         );
-        setState(() => _applying = false);
         return;
       }
+      await _applyFromLocal(target, localPath);
+    } catch (_) {}
+  }
 
+  Future<void> _applyFromLocal(String target, String localPath) async {
+    setState(() => _applying = true);
+
+    try {
       final ok = await NativeBridgeService.instance.setWallpaper(localPath, target: target);
 
       final installedApps = await NativeBridgeService.instance.getInstalledApps();

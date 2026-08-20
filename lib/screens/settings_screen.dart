@@ -8,16 +8,10 @@ import '../widgets/settings_row.dart';
 
 const String _privacyPolicyUrl = 'https://example.com/theme-studio-privacy';
 const String _playStorePackageId = 'com.example.theme_studio';
-
 const String _feedbackEmail = 'hirasafdar04@gmail.com';
 
-/// Settings — everything that isn't one of the four core tools. §3.7.
-/// Reached via the gear icon on Home's app bar (not a 6th nav tab, §4).
-/// No coin/currency balance, no PRO badge, no ad banners, no upsell —
-/// nothing in the product brief calls for a monetization layer.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
-
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
@@ -26,8 +20,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const _languages = {
     'en': 'English',
     'ur': 'اردو',
-    'es': 'Español',
-    'fr': 'Français',
+    'es': 'Espanol',
+    'fr': 'Francais',
   };
 
   Future<void> _openLanguagePicker() async {
@@ -57,10 +51,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
-
-    // setState yahan khud nahi chahiye -- LocaleController.setLanguage()
-    // notifyListeners() call karta hai, jo main.dart ke ListenableBuilder
-    // se poori app (is screen samet) turant rebuild kar deta hai.
     if (selected != null) {
       await LocaleController.instance.setLanguage(selected);
     }
@@ -70,7 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (uri.host == 'example.com') {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("This link will be available once the app is published")),
+          const SnackBar(content: Text('This link will be available once the app is published')),
         );
       }
       return;
@@ -138,11 +128,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: tr('settings_how_icons'),
                 onTap: () => _openExplainer(
                   tr('settings_how_icons'),
-                  'Android doesn\'t let apps replace another app\'s icon directly. '
+                  "Android doesn't let apps replace another app's icon directly. "
                       'When you tap Apply on the Icon changer screen, Theme studio '
                       'creates a new Home Screen shortcut with the icon you picked. '
-                      'Android will show a confirmation dialog before it\'s added — '
-                      'that\'s a one-time system check, not something the app controls.',
+                      "Android will show a confirmation dialog before it's added - "
+                      "that's a one-time system check, not something the app controls.",
                 ),
               ),
               SettingsRow(
@@ -152,7 +142,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   tr('settings_how_widgets'),
                   'Home Screen widgets are drawn entirely by Android, not by this app. '
                       'Tapping "Pin to Home Screen" sends a request to your launcher, '
-                      'which shows its own confirmation before adding the widget. '
+                      "which shows its own confirmation before adding the widget. "
                       'Once pinned, the widget updates itself in the background.',
                 ),
               ),
@@ -161,10 +151,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: tr('settings_how_control'),
                 onTap: () => _openExplainer(
                   tr('settings_how_control'),
-                  'Control Center is an overlay drawn using Android\'s Accessibility '
+                  "Control Center is an overlay drawn using Android's Accessibility "
                       'Service. That service needs to be turned on once in Android '
-                      'Settings — Android requires this to be a manual, explicit step. '
-                      'Once it\'s on, swipe down from the top of the screen to open '
+                      'Settings - Android requires this to be a manual, explicit step. '
+                      "Once it's on, swipe down from the top of the screen to open "
                       'the overlay from anywhere.',
                 ),
               ),
@@ -207,5 +197,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
 }

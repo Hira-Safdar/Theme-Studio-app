@@ -30,7 +30,6 @@ class _HomeScreenState extends State<HomeScreen>
     _tabController = TabController(length: _categories.length + 2, vsync: this);
     controller.addListener(_onChange);
     FavoritesService.instance.addListener(_onChange);
-    FavoritesService.instance.load();
   }
 
   @override
@@ -78,11 +77,6 @@ class _HomeScreenState extends State<HomeScreen>
     await ThemePreviewScreen.show(context, theme);
   }
 
-  String _titleCase(String s) {
-    if (s.isEmpty) return s;
-    return s[0].toUpperCase() + s.substring(1);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen>
           isScrollable: true,
           tabs: [
             Tab(text: tr('all_categories')),
-            ..._categories.map((c) => Tab(text: _titleCase(c))),
+            ..._categories.map((c) => Tab(text: titleCase(c))),
             Tab(text: tr('online_tab')),
           ],
         ),
@@ -273,7 +267,7 @@ class _OnlineThemesGrid extends StatelessWidget {
                       ),
                       const SizedBox(height: AppSpacing.xs),
                       Text(
-                        _titleCase(theme.category),
+                        titleCase(theme.category),
                         style: AppTypography.bodySecondary.copyWith(
                           color: Colors.white70,
                           fontSize: 11,
@@ -289,9 +283,4 @@ class _OnlineThemesGrid extends StatelessWidget {
       },
     );
   }
-}
-
-String _titleCase(String s) {
-  if (s.isEmpty) return s;
-  return s[0].toUpperCase() + s.substring(1);
 }

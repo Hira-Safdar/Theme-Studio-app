@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../services/download_service.dart';
 import '../theme/app_theme.dart';
 import 'pack_selector.dart';
 
@@ -17,12 +18,21 @@ String _targetLabel(String id) {
 }
 
 class WallpaperPreviewScreen extends StatefulWidget {
-  const WallpaperPreviewScreen({super.key, required this.image});
+  const WallpaperPreviewScreen({
+    super.key,
+    required this.image,
+    this.downloadUrl,
+  });
   final ImageProvider image;
+  final String? downloadUrl;
 
-  static Future<String?> show(BuildContext context, ImageProvider image) {
+  static String? lastDownloadedPath;
+
+  static Future<String?> show(BuildContext context, ImageProvider image, {String? downloadUrl}) {
     return Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => WallpaperPreviewScreen(image: image)),
+      MaterialPageRoute(
+        builder: (_) => WallpaperPreviewScreen(image: image, downloadUrl: downloadUrl),
+      ),
     );
   }
 
@@ -32,9 +42,66 @@ class WallpaperPreviewScreen extends StatefulWidget {
 
 class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
   String _target = 'both';
+  bool _downloading = false;
+  bool _downloaded = false;
+  double _progress = 0;
+  String? _localPath;
+  String? _error;
+
+  bool get _isOnline => widget.downloadUrl != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_isOnline) WallpaperPreviewScreen.lastDownloadedPath = null;
+  }
+
+  Future<void> _download() async {
+    if (_downloading || _downloaded) return;
+    setState(() {
+      _downloading = true;
+      _progress = 0;
+      _error = null;
+    });
+
+    try {
+      final path = await DownloadService.instance.download(
+        widget.downloadUrl!,
+        onProgress: (p) {
+          if (mounted) setState(() => _progress = p);
+        },
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _downloading = false;
+        if (path != null) {
+          _downloaded = true;
+          _localPath = path;
+          WallpaperPreviewScreen.lastDownloadedPath = path;
+        } else {
+          _error = 'Download failed. Tap to retry.';
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _downloading = false;
+        _error = 'Download failed. Tap to retry.';
+      });
+    }
+  }
+
+  void _apply() {
+    Navigator.of(context).pop(_target);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final previewImage = _downloaded && _localPath != null
+        ? FileImage(File(_localPath!))
+        : widget.image;
+
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBg(context),
       appBar: AppBar(
@@ -49,8 +116,10 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
         child: Column(
           children: [
             Expanded(
-              child: _PhoneFrame(image: widget.image, target: _target),
+              child: _PhoneFrame(image: previewImage, target: _target),
             ),
+            if (_downloading) _buildProgressSection(),
+            if (_error != null && !_downloading) _buildErrorSection(),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
               child: PackSelector(
@@ -66,21 +135,85 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: _downloading ? null : () => Navigator.of(context).pop(),
                       child: const Text('Cancel'),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop(_target),
-                      child: const Text('Apply'),
+                  if (_isOnline && !_downloaded)
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _downloading ? null : _download,
+                        icon: _downloading
+                            ? SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  value: _progress > 0 ? _progress : null,
+                                  valueColor: const AlwaysStoppedAnimation(Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.download),
+                        label: Text(_downloading ? '${(_progress * 100).toInt()}%' : 'Download'),
+                      ),
                     ),
-                  ),
+                  if (!_isOnline || _downloaded)
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _apply,
+                        child: const Text('Apply'),
+                      ),
+                    ),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressSection() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenPadding,
+        AppSpacing.sm,
+        AppSpacing.screenPadding,
+        AppSpacing.sm,
+      ),
+      child: Column(
+        children: [
+          ClipRRect(
+            borderRadius: AppRadius.smRadius,
+            child: LinearProgressIndicator(
+              value: _progress > 0 ? _progress : null,
+              minHeight: 6,
+              backgroundColor: AppTheme.borderSubtle(context),
+              color: AppTheme.accentPrimary(context),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Downloading... ${(_progress * 100).toInt()}%',
+            style: AppTypography.bodySecondary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorSection() {
+    return GestureDetector(
+      onTap: _download,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.screenPadding,
+          vertical: AppSpacing.sm,
+        ),
+        child: Text(
+          _error!,
+          style: AppTypography.body.copyWith(color: AppTheme.error(context)),
         ),
       ),
     );
@@ -310,8 +443,6 @@ class _HomeContent extends StatelessWidget {
   }
 }
 
-/// Convenience for building the right ImageProvider from an asset path,
-/// a file path, or a network URL (for online wallpapers).
 ImageProvider wallpaperImageProvider({String? assetPath, String? filePath, String? networkUrl}) {
   if (networkUrl != null) return NetworkImage(networkUrl);
   if (filePath != null) return FileImage(File(filePath));

@@ -114,11 +114,6 @@ class ThemeController extends ChangeNotifier {
     notifyListeners(); // UI turant refresh -- Home Screen preview turant update
   }
 
-  Future<String?> getActiveIconPackId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('active_icon_pack');
-  }
-
   void setActiveTheme(String? id) {
     activeThemeId = id;
     notifyListeners();

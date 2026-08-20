@@ -48,8 +48,8 @@ class NativeBridgeService {
         'target': target,
       });
       return result ?? false;
-    } on PlatformException catch (e) {
-      debugPrint('Wallpaper set failed: ${e.message}');
+    } catch (e) {
+      debugPrint('Wallpaper set failed: $e');
       return false;
     }
   }
@@ -67,8 +67,8 @@ class NativeBridgeService {
         'packageName': packageName,
       });
       return result;
-    } on PlatformException catch (e) {
-      debugPrint('getAppIcon failed for $packageName: ${e.message}');
+    } catch (e) {
+      debugPrint('getAppIcon failed for $packageName: $e');
       return null;
     }
   }
@@ -90,19 +90,8 @@ class NativeBridgeService {
         'iconPath': iconFilePath,
       });
       return result ?? false;
-    } on PlatformException catch (e) {
-      debugPrint('Shortcut creation failed: ${e.message}');
-      return false;
-    }
-  }
-
-  Future<bool> isPinShortcutSupported() async {
-    if (!Platform.isAndroid) return false;
-    try {
-      final result = await _channel.invokeMethod<bool>('isPinShortcutSupported');
-      return result ?? false;
-    } on PlatformException catch (e) {
-      debugPrint('isPinShortcutSupported failed: ${e.message}');
+    } catch (e) {
+      debugPrint('Shortcut creation failed: $e');
       return false;
     }
   }
@@ -126,8 +115,8 @@ class NativeBridgeService {
               ))
           .where((app) => app.packageName.isNotEmpty)
           .toList();
-    } on PlatformException catch (e) {
-      debugPrint('getInstalledApps failed: ${e.message}');
+    } catch (e) {
+      debugPrint('getInstalledApps failed: $e');
       return [];
     }
   }
@@ -152,8 +141,8 @@ class NativeBridgeService {
         'style': style,
       });
       return result;
-    } on PlatformException catch (e) {
-      debugPrint('getThemedAppIcon failed for $packageName: ${e.message}');
+    } catch (e) {
+      debugPrint('getThemedAppIcon failed for $packageName: $e');
       return null;
     }
   }
@@ -162,9 +151,14 @@ class NativeBridgeService {
 
   Future<bool> isAccessibilityServiceEnabled() async {
     if (!Platform.isAndroid) return false;
-    final result =
-        await _channel.invokeMethod<bool>('isAccessibilityEnabled');
-    return result ?? false;
+    try {
+      final result =
+          await _channel.invokeMethod<bool>('isAccessibilityEnabled');
+      return result ?? false;
+    } catch (e) {
+      debugPrint('isAccessibilityServiceEnabled failed: $e');
+      return false;
+    }
   }
 
   /// User ko seedha Settings > Accessibility screen par le jaata hai,
@@ -172,7 +166,11 @@ class NativeBridgeService {
   /// nahi ho sakta -- Android khud user consent maangta hai.
   Future<void> openAccessibilitySettings() async {
     if (!Platform.isAndroid) return;
-    await _channel.invokeMethod('openAccessibilitySettings');
+    try {
+      await _channel.invokeMethod('openAccessibilitySettings');
+    } catch (e) {
+      debugPrint('openAccessibilitySettings failed: $e');
+    }
   }
 
   // ---------------- NOTES WIDGET (in-app fallback editor) ----------------
@@ -185,8 +183,8 @@ class NativeBridgeService {
     if (!Platform.isAndroid) return null;
     try {
       return await _channel.invokeMethod<String>('getNoteText');
-    } on PlatformException catch (e) {
-      debugPrint('getNoteText failed: ${e.message}');
+    } catch (e) {
+      debugPrint('getNoteText failed: $e');
       return null;
     }
   }
@@ -196,41 +194,13 @@ class NativeBridgeService {
     try {
       final ok = await _channel.invokeMethod<bool>('saveNoteText', {'text': text});
       return ok ?? false;
-    } on PlatformException catch (e) {
-      debugPrint('saveNoteText failed: ${e.message}');
+    } catch (e) {
+      debugPrint('saveNoteText failed: $e');
       return false;
     }
   }
 
-  /// Pehle device ka real Notes app (CREATE_NOTE / known OEM packages) kholne
-  /// ki koshish karta hai -- widget tap wala hi flow, taake in-app card se
-  /// bhi behavior consistent rahe. Koi notes app na mile to hamari apni
-  /// fallback editor khulti hai (native side already handle karta hai).
-  Future<void> openNotesApp() async {
-    if (!Platform.isAndroid) return;
-    try {
-      await _channel.invokeMethod('openNotesApp');
-    } on PlatformException catch (e) {
-      debugPrint('openNotesApp failed: ${e.message}');
-    }
-  }
-
   // ---------------- WEATHER WIDGET LOCATION ----------------
-
-  /// Caller ko location permission pehle khud maangni chahiye
-  /// (permission_handler se) -- ye method sirf last-known location padh
-  /// kar "City, Country" string banata hai aur native side cache/pinned-
-  /// widget refresh bhi karta hai. Permission na ho, location off ho, ya
-  /// geocoding fail ho to null -- caller "location unavailable" dikhaye.
-  Future<String?> getWeatherLocation() async {
-    if (!Platform.isAndroid) return null;
-    try {
-      return await _channel.invokeMethod<String>('getWeatherLocation');
-    } on PlatformException catch (e) {
-      debugPrint('getWeatherLocation failed: ${e.message}');
-      return null;
-    }
-  }
 
   /// Location fetch hone ke turant baad native side jo real temp/condition
   /// (Open-Meteo se) cache karta hai, wahi yahan se padhte hain -- koi naya
@@ -258,8 +228,8 @@ class NativeBridgeService {
         'wind': result['wind'] as String?,
         'hourly': hourly,
       };
-    } on PlatformException catch (e) {
-      debugPrint('getWeatherSnapshot failed: ${e.message}');
+    } catch (e) {
+      debugPrint('getWeatherSnapshot failed: $e');
       return {};
     }
   }
@@ -272,8 +242,8 @@ class NativeBridgeService {
     if (!Platform.isAndroid) return null;
     try {
       return await _channel.invokeMethod<String>('getSavedWeatherLocation');
-    } on PlatformException catch (e) {
-      debugPrint('getSavedWeatherLocation failed: ${e.message}');
+    } catch (e) {
+      debugPrint('getSavedWeatherLocation failed: $e');
       return null;
     }
   }
@@ -292,8 +262,8 @@ class NativeBridgeService {
       return result
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
-    } on PlatformException catch (e) {
-      debugPrint('searchWeatherLocations failed: ${e.message}');
+    } catch (e) {
+      debugPrint('searchWeatherLocations failed: $e');
       return [];
     }
   }
@@ -314,8 +284,8 @@ class NativeBridgeService {
         'label': label,
       });
       return result ?? false;
-    } on PlatformException catch (e) {
-      debugPrint('setWeatherLocation failed: ${e.message}');
+    } catch (e) {
+      debugPrint('setWeatherLocation failed: $e');
       return false;
     }
   }
@@ -331,8 +301,8 @@ class NativeBridgeService {
       final result = await _channel.invokeMethod<Map<Object?, Object?>>('getPinnedWidgetCounts');
       if (result == null) return {};
       return result.map((key, value) => MapEntry(key.toString(), (value as int?) ?? 0));
-    } on PlatformException catch (e) {
-      debugPrint('getPinnedWidgetCounts failed: ${e.message}');
+    } catch (e) {
+      debugPrint('getPinnedWidgetCounts failed: $e');
       return {};
     }
   }
@@ -365,25 +335,8 @@ class NativeBridgeService {
         if (cornerRadius != null) 'cornerRadius': cornerRadius,
       });
       return result ?? false;
-    } on PlatformException catch (e) {
-      debugPrint('requestPinWidget failed: ${e.message}');
-      return false;
-    }
-  }
-
-  /// Device par installed real Notes/Weather app ka asal widget pin
-  /// karne ki request (custom widget ke bajaye). Sirf "notes" aur
-  /// "weather" types ke liye -- baaki types requestPinWidget se pin
-  /// hote hain.
-  Future<bool> requestPinExternalWidget(String widgetType) async {
-    if (!Platform.isAndroid) return false;
-    try {
-      final result = await _channel.invokeMethod<bool>('requestPinExternalWidget', {
-        'widgetType': widgetType,
-      });
-      return result ?? false;
-    } on PlatformException catch (e) {
-      debugPrint('requestPinExternalWidget failed: ${e.message}');
+    } catch (e) {
+      debugPrint('requestPinWidget failed: $e');
       return false;
     }
   }
@@ -411,8 +364,8 @@ class NativeBridgeService {
         if (cornerRadius != null) 'cornerRadius': cornerRadius,
       });
       return result ?? false;
-    } on PlatformException catch (e) {
-      debugPrint('updateWidgetStyle failed: ${e.message}');
+    } catch (e) {
+      debugPrint('updateWidgetStyle failed: $e');
       return false;
     }
   }
@@ -434,8 +387,8 @@ class NativeBridgeService {
         'cornerRadius': cornerRadius,
       });
       return result ?? false;
-    } on PlatformException catch (e) {
-      debugPrint('saveWidgetCustomization failed: ${e.message}');
+    } catch (e) {
+      debugPrint('saveWidgetCustomization failed: $e');
       return false;
     }
   }
@@ -446,8 +399,8 @@ class NativeBridgeService {
       final result = await _channel.invokeMethod<Map<Object?, Object?>>('getWidgetCustomization');
       if (result == null) return {};
       return result.map((key, value) => MapEntry(key.toString(), value));
-    } on PlatformException catch (e) {
-      debugPrint('getWidgetCustomization failed: ${e.message}');
+    } catch (e) {
+      debugPrint('getWidgetCustomization failed: $e');
       return {};
     }
   }
@@ -459,7 +412,11 @@ class NativeBridgeService {
   /// Ye MaterialApp ke top-level state se ek hi dafa register hona chahiye.
   void setIncomingCallHandler(Future<void> Function(String method) handler) {
     _channel.setMethodCallHandler((call) async {
-      await handler(call.method);
+      try {
+        await handler(call.method);
+      } catch (e) {
+        debugPrint('setIncomingCallHandler error for ${call.method}: $e');
+      }
     });
   }
 }

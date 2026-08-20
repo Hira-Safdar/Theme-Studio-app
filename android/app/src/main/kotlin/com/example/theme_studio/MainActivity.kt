@@ -320,24 +320,64 @@ class MainActivity : FlutterActivity() {
         return try {
             val file = File(path)
             if (!file.exists()) return false
-            val bitmap = BitmapFactory.decodeFile(path)
+            val bitmap = BitmapFactory.decodeFile(path) ?: return false
             val wallpaperManager = WallpaperManager.getInstance(applicationContext)
 
+            // Screen dimensions le ke bitmap ko center-crop karke fill karo
+            val dm = resources.displayMetrics
+            val screenW = dm.widthPixels
+            val screenH = dm.heightPixels
+            val cropped = centerCropBitmap(bitmap, screenW, screenH)
+
             when (target) {
-                "home" -> wallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)
-                "lock" -> wallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
+                "home" -> wallpaperManager.setBitmap(cropped, null, true, WallpaperManager.FLAG_SYSTEM)
+                "lock" -> wallpaperManager.setBitmap(cropped, null, true, WallpaperManager.FLAG_LOCK)
                 else -> {
-                    // "both" -- Android 13+ ke liye FLAG_SYSTEM or FLAG_LOCK combine
                     wallpaperManager.setBitmap(
-                        bitmap, null, true,
+                        cropped, null, true,
                         WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK
                     )
                 }
             }
+            if (cropped !== bitmap) bitmap.recycle()
             true
         } catch (e: Exception) {
             e.printStackTrace()
             false
+        }
+    }
+
+    // Bitmap ko screen dimensions ke liye center-crop karta hai --
+    // source ka center portion screen aspect ratio mein fit hota hai,
+    // baaki edges crop ho jaati hain. Result hamesha screen-size ka hota hai.
+    private fun centerCropBitmap(source: Bitmap, targetW: Int, targetH: Int): Bitmap {
+        if (targetW <= 0 || targetH <= 0) return source
+        val srcW = source.width
+        val srcH = source.height
+        val targetRatio = targetW.toFloat() / targetH.toFloat()
+        val srcRatio = srcW.toFloat() / srcH.toFloat()
+
+        val cropW: Int
+        val cropH: Int
+        var offsetX = 0
+        var offsetY = 0
+
+        if (srcRatio > targetRatio) {
+            // Source zyada wide hai -- height ko screen ke barabar, width center se crop
+            cropH = srcH
+            cropW = (srcH * targetRatio).toInt().coerceAtMost(srcW)
+            offsetX = (srcW - cropW) / 2
+        } else {
+            // Source zyada lamba hai -- width ko screen ke barabar, height center se crop
+            cropW = srcW
+            cropH = (srcW / targetRatio).toInt().coerceAtMost(srcH)
+            offsetY = (srcH - cropH) / 2
+        }
+
+        val cropped = Bitmap.createBitmap(source, offsetX, offsetY, cropW, cropH)
+        // Agar cropped size already screen size hai to scale bhi karo
+        return Bitmap.createScaledBitmap(cropped, targetW, targetH, true).also {
+            if (it !== cropped) cropped.recycle()
         }
     }
 
