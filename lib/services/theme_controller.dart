@@ -65,8 +65,6 @@ class ThemeController extends ChangeNotifier {
       final installedApps = await NativeBridgeService.instance.getInstalledApps();
       final matches = <({String packageName, String label, String iconKey})>[];
       for (final app in installedApps) {
-        if (!app.isSystemApp) continue;
-
         final iconKey = IconMatchingService.instance.guessIconKey(app.packageName, app.label);
         if (iconKey != null) {
           matches.add((packageName: app.packageName, label: app.label, iconKey: iconKey));

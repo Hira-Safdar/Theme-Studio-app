@@ -32,3 +32,4 @@ flutter:
     - assets/icon_packs/cartoon/
     - assets/icon_packs/flat_colors/
     - assets/icon_packs/dark_mode/
+    - assets/pack_catalog.json

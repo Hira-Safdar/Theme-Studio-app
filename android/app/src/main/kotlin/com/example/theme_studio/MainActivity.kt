@@ -114,10 +114,18 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
 
                 // ---------------- WALLPAPER ----------------
+                // Bitmap decode + crop + WallpaperManager.setBitmap sab
+                // heavy kaam hai -- main thread par karne se low-RAM devices
+                // (Infinix etc.) pe OOM/ANR hota hai aur app restart ho
+                // jaata hai. Background thread pe move karte hain (waise hi
+                // jaise getWeatherLocation).
                 "setWallpaper" -> {
                     val path = call.argument<String>("path")
                     val target = call.argument<String>("target") ?: "both"
-                    result.success(setWallpaperFromPath(path, target))
+                    Thread {
+                        val ok = setWallpaperFromPath(path, target)
+                        runOnUiThread { result.success(ok) }
+                    }.start()
                 }
 
                 // ---------------- ICON SHORTCUT ----------------
@@ -840,96 +848,108 @@ class MainActivity : FlutterActivity() {
             }
             Log.d("ThemeStudio", "createCustomIconShortcut: Icon file exists, size=${iconFile.length()} bytes")
 
-            val bitmap = BitmapFactory.decodeFile(iconPath)
-            if (bitmap == null) {
-                Log.e("ThemeStudio", "createCustomIconShortcut: BitmapFactory.decodeFile returned null for $iconPath")
-                result.success(false)
-                return
-            }
-            Log.d("ThemeStudio", "createCustomIconShortcut: Bitmap decoded successfully, ${bitmap.width}x${bitmap.height}")
-            val customIcon = Icon.createWithBitmap(bitmap)
+            // Bitmap decode heavy hai -- background thread pe karte hain
+            // taake main thread freeze na ho aur low-RAM devices pe OOM na ho.
+            Thread {
+                val bitmap = BitmapFactory.decodeFile(iconPath)
+                if (bitmap == null) {
+                    Log.e("ThemeStudio", "createCustomIconShortcut: BitmapFactory.decodeFile returned null for $iconPath")
+                    runOnUiThread { result.success(false) }
+                    return@Thread
+                }
+                Log.d("ThemeStudio", "createCustomIconShortcut: Bitmap decoded successfully, ${bitmap.width}x${bitmap.height}")
+                val customIcon = Icon.createWithBitmap(bitmap)
 
-            // Unique shortcut ID with icon path hash - ensures each icon change is treated as new pin
-            val iconHash = iconPath.hashCode().toString(16).replace("-", "n")
-            val shortcutId = "theme_studio_${packageName}_$iconHash"
-            Log.d("ThemeStudio", "createCustomIconShortcut: shortcutId=$shortcutId")
-            val shortcut = ShortcutInfo.Builder(this, shortcutId)
-                .setShortLabel(appLabel)
-                .setLongLabel(appLabel)
-                .setIcon(customIcon)
-                .setIntent(launchIntent)
-                .build()
-
-            // Check if this exact shortcut (same icon) is already pinned
-            val pinnedShortcuts = shortcutManager.pinnedShortcuts
-            val alreadyPinned = pinnedShortcuts.any { it.id == shortcutId }
-            Log.d("ThemeStudio", "createCustomIconShortcut: Total pinned=${pinnedShortcuts.size}, alreadyPinned=$alreadyPinned")
-            if (alreadyPinned) {
-                Log.d("ThemeStudio", "createCustomIconShortcut: $packageName shortcut already pinned with same icon, updating in place")
-                shortcutManager.updateShortcuts(listOf(shortcut))
-                result.success(true)
-                return
-            }
-
-            // Har request ka apna unique action + request code -- taake
-            // "Apply All" ke doosre/tisre shortcut ka receiver ya
-            // PendingIntent pehle wale se collide na kare.
-            val requestId = shortcutRequestSeq++
-            val action = "$PIN_SHORTCUT_ACTION_PREFIX$requestId"
-
-            var settled = false
-            val handler = Handler(Looper.getMainLooper())
-            var receiverRef: BroadcastReceiver? = null
-            var timeoutRunnable: Runnable? = null
-
-            fun finish(success: Boolean) {
-                if (settled) return
-                settled = true
-                timeoutRunnable?.let { handler.removeCallbacks(it) }
-                receiverRef?.let {
+                runOnUiThread {
                     try {
-                        unregisterReceiver(it)
+                        // Unique shortcut ID with icon path hash - ensures each icon change is treated as new pin
+                        val iconHash = iconPath.hashCode().toString(16).replace("-", "n")
+                        val shortcutId = "theme_studio_${packageName}_$iconHash"
+                        Log.d("ThemeStudio", "createCustomIconShortcut: shortcutId=$shortcutId")
+                        val shortcut = ShortcutInfo.Builder(this, shortcutId)
+                            .setShortLabel(appLabel)
+                            .setLongLabel(appLabel)
+                            .setIcon(customIcon)
+                            .setIntent(launchIntent)
+                            .build()
+
+                        // Check if this exact shortcut (same icon) is already pinned
+                        val pinnedShortcuts = shortcutManager.pinnedShortcuts
+                        val alreadyPinned = pinnedShortcuts.any { it.id == shortcutId }
+                        Log.d("ThemeStudio", "createCustomIconShortcut: Total pinned=${pinnedShortcuts.size}, alreadyPinned=$alreadyPinned")
+                        if (alreadyPinned) {
+                            Log.d("ThemeStudio", "createCustomIconShortcut: $packageName shortcut already pinned with same icon, updating in place")
+                            shortcutManager.updateShortcuts(listOf(shortcut))
+                            result.success(true)
+                            return@runOnUiThread
+                        }
+
+                        // Har request ka apna unique action + request code -- taake
+                        // "Apply All" ke doosre/tisre shortcut ka receiver ya
+                        // PendingIntent pehle wale se collide na kare.
+                        val requestId = shortcutRequestSeq++
+                        val action = "$PIN_SHORTCUT_ACTION_PREFIX$requestId"
+
+                        var settled = false
+                        val handler = Handler(Looper.getMainLooper())
+                        var receiverRef: BroadcastReceiver? = null
+                        var timeoutRunnable: Runnable? = null
+
+                        fun finish(success: Boolean) {
+                            if (settled) return
+                            settled = true
+                            timeoutRunnable?.let { handler.removeCallbacks(it) }
+                            receiverRef?.let {
+                                try {
+                                    unregisterReceiver(it)
+                                } catch (e: Exception) {
+                                    // pehle hi unregistered ho chuka (timeout/receiver
+                                    // dono ka race) -- ignore, koi masla nahi.
+                                }
+                            }
+                            result.success(success)
+                        }
+
+                        val receiver = object : BroadcastReceiver() {
+                            override fun onReceive(context: Context, intent: Intent) {
+                                Log.d("ThemeStudio", "createCustomIconShortcut: Pin confirmation received for $packageName (shortcutId=$shortcutId)")
+                                finish(true)
+                            }
+                        }
+                        receiverRef = receiver
+
+                        val filter = IntentFilter(action)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                        } else {
+                            @Suppress("UnspecifiedRegisterReceiverFlag")
+                            registerReceiver(receiver, filter)
+                        }
+
+                        timeoutRunnable = Runnable {
+                            Log.w("ThemeStudio", "createCustomIconShortcut: Timeout waiting for pin confirmation for $packageName")
+                            finish(false)
+                        }
+                        handler.postDelayed(timeoutRunnable, PIN_SHORTCUT_TIMEOUT_MS)
+
+                        val callbackIntent = Intent(action).setPackage(applicationContext.packageName)
+                        val pendingIntent = PendingIntent.getBroadcast(
+                            this,
+                            requestId,
+                            callbackIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+
+                        Log.d("ThemeStudio", "createCustomIconShortcut: Calling requestPinShortcut for $packageName with shortcutId=$shortcutId")
+                        shortcutManager.requestPinShortcut(shortcut, pendingIntent.intentSender)
+                        Log.d("ThemeStudio", "createCustomIconShortcut: requestPinShortcut returned for $packageName")
                     } catch (e: Exception) {
-                        // pehle hi unregistered ho chuka (timeout/receiver
-                        // dono ka race) -- ignore, koi masla nahi.
+                        Log.e("ThemeStudio", "createCustomIconShortcut: Exception in UI thread: ${e.message}", e)
+                        e.printStackTrace()
+                        result.success(false)
                     }
                 }
-                result.success(success)
-            }
-
-            val receiver = object : BroadcastReceiver() {
-                override fun onReceive(context: Context, intent: Intent) {
-                    Log.d("ThemeStudio", "createCustomIconShortcut: Pin confirmation received for $packageName (shortcutId=$shortcutId)")
-                    finish(true)
-                }
-            }
-            receiverRef = receiver
-
-            val filter = IntentFilter(action)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag")
-                registerReceiver(receiver, filter)
-            }
-
-            timeoutRunnable = Runnable {
-                Log.w("ThemeStudio", "createCustomIconShortcut: Timeout waiting for pin confirmation for $packageName")
-                finish(false)
-            }
-            handler.postDelayed(timeoutRunnable, PIN_SHORTCUT_TIMEOUT_MS)
-
-            val callbackIntent = Intent(action).setPackage(applicationContext.packageName)
-            val pendingIntent = PendingIntent.getBroadcast(
-                this,
-                requestId,
-                callbackIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            Log.d("ThemeStudio", "createCustomIconShortcut: Calling requestPinShortcut for $packageName with shortcutId=$shortcutId")
-            shortcutManager.requestPinShortcut(shortcut, pendingIntent.intentSender)
-            Log.d("ThemeStudio", "createCustomIconShortcut: requestPinShortcut returned for $packageName")
+            }.start()
         } catch (e: Exception) {
             Log.e("ThemeStudio", "createCustomIconShortcut: Exception: ${e.message}", e)
             e.printStackTrace()

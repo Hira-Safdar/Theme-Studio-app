@@ -6,11 +6,8 @@ import '../services/favorites_service.dart';
 import '../services/theme_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/preset_theme_card.dart' show PresetCardStatus;
-import '../widgets/theme_grid_tile.dart';
 import 'theme_preview_screen.dart';
 import 'online_theme_apply_screen.dart';
-
-const List<String> _categories = ['nature', 'dark', 'minimal', 'abstract'];
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,23 +15,19 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+class _HomeScreenState extends State<HomeScreen> {
   final controller = ThemeController.instance;
   bool _showFavoritesOnly = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _categories.length + 2, vsync: this);
     controller.addListener(_onChange);
     FavoritesService.instance.addListener(_onChange);
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     controller.removeListener(_onChange);
     FavoritesService.instance.removeListener(_onChange);
     super.dispose();
@@ -50,35 +43,38 @@ class _HomeScreenState extends State<HomeScreen>
     return PresetCardStatus.applied;
   }
 
-  String _categoryForTheme(ThemeModel theme) {
-    for (final cat in _categories) {
-      if (theme.id.startsWith('${cat}_') || theme.wallpaperAssetPath.contains('/$cat/')) {
-        return cat;
-      }
-    }
-    return _categories.first;
-  }
-
-  List<ThemeModel> _themesForCategory(String category) {
-    return presetThemes.where((t) => _categoryForTheme(t) == category).toList();
-  }
-
-  List<ThemeModel> _filteredThemes(String category) {
-    final themes = category == 'all'
-        ? List<ThemeModel>.from(presetThemes)
-        : _themesForCategory(category);
+  List<ThemeModel> _filteredPresetThemes() {
+    var themes = List<ThemeModel>.from(presetThemes);
     if (_showFavoritesOnly) {
-      return themes.where((t) => FavoritesService.instance.isFavorite(t.id)).toList();
+      themes = themes.where((t) => FavoritesService.instance.isFavorite(t.id)).toList();
     }
     return themes;
   }
 
-  Future<void> _handleTap(ThemeModel theme) async {
+  List<OnlineTheme> _filteredOnlineThemes() {
+    var themes = List<OnlineTheme>.from(OnlineTheme.curated);
+    if (_showFavoritesOnly) {
+      themes = themes.where((t) => FavoritesService.instance.isFavorite(t.id)).toList();
+    }
+    return themes;
+  }
+
+  Future<void> _handlePresetTap(ThemeModel theme) async {
     await ThemePreviewScreen.show(context, theme);
+  }
+
+  void _handleOnlineTap(OnlineTheme theme) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => OnlineThemeApplyScreen(onlineTheme: theme)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final preset = _filteredPresetThemes();
+    final online = _filteredOnlineThemes();
+
     return Scaffold(
       appBar: AppBar(
         title: Text(tr('app_title')),
@@ -97,50 +93,42 @@ class _HomeScreenState extends State<HomeScreen>
             onPressed: () => Navigator.of(context).pushNamed('/settings'),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabs: [
-            Tab(text: tr('all_categories')),
-            ..._categories.map((c) => Tab(text: titleCase(c))),
-            Tab(text: tr('online_tab')),
-          ],
-        ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _PresetThemesGrid(
-            themes: _filteredThemes('all'),
-            statusFor: _statusFor,
-            onTap: controller.isApplying ? null : _handleTap,
-          ),
-          ..._categories.map((cat) => _PresetThemesGrid(
-            themes: _filteredThemes(cat),
-            statusFor: _statusFor,
-            onTap: controller.isApplying ? null : _handleTap,
-          )),
-          _OnlineThemesGrid(),
-        ],
+      body: _MixGrid(
+        presetThemes: preset,
+        onlineThemes: online,
+        statusFor: _statusFor,
+        onPresetTap: controller.isApplying ? null : _handlePresetTap,
+        onOnlineTap: controller.isApplying ? null : _handleOnlineTap,
+        onToggleFavorite: (id) => FavoritesService.instance.toggle(id),
+        isFavorite: (id) => FavoritesService.instance.isFavorite(id),
       ),
     );
   }
 }
 
-class _PresetThemesGrid extends StatelessWidget {
-  const _PresetThemesGrid({
-    required this.themes,
+class _MixGrid extends StatelessWidget {
+  const _MixGrid({
+    required this.presetThemes,
+    required this.onlineThemes,
     required this.statusFor,
-    required this.onTap,
+    required this.onPresetTap,
+    required this.onOnlineTap,
+    required this.onToggleFavorite,
+    required this.isFavorite,
   });
 
-  final List<ThemeModel> themes;
+  final List<ThemeModel> presetThemes;
+  final List<OnlineTheme> onlineThemes;
   final PresetCardStatus Function(ThemeModel) statusFor;
-  final Future<void> Function(ThemeModel)? onTap;
+  final Future<void> Function(ThemeModel)? onPresetTap;
+  final void Function(OnlineTheme)? onOnlineTap;
+  final void Function(String id) onToggleFavorite;
+  final bool Function(String id) isFavorite;
 
   @override
   Widget build(BuildContext context) {
-    if (themes.isEmpty) {
+    if (presetThemes.isEmpty && onlineThemes.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),
@@ -152,54 +140,225 @@ class _PresetThemesGrid extends StatelessWidget {
         ),
       );
     }
-    return GridView.builder(
+    return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: AppSpacing.md,
-        mainAxisSpacing: AppSpacing.md,
-        childAspectRatio: 2 / 3,
-      ),
-      itemCount: themes.length,
-      itemBuilder: (context, i) {
-        final theme = themes[i];
-        return ThemeGridTile(
-          theme: theme,
-          status: statusFor(theme),
-          onTap: onTap != null ? () => onTap!(theme) : null,
-          isFavorite: FavoritesService.instance.isFavorite(theme.id),
-          onToggleFavorite: () => FavoritesService.instance.toggle(theme.id),
-        );
-      },
+      children: [
+        if (presetThemes.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Text(
+              'Preset Themes',
+              style: AppTypography.heading.copyWith(
+                color: AppTheme.textPrimary(context),
+              ),
+            ),
+          ),
+          ...presetThemes.map((theme) => _PresetMixCard(
+            theme: theme,
+            status: statusFor(theme),
+            onTap: onPresetTap != null ? () => onPresetTap!(theme) : null,
+            isFavorite: isFavorite(theme.id),
+            onToggleFavorite: () => onToggleFavorite(theme.id),
+          )),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        if (onlineThemes.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Text(
+              'Online Themes',
+              style: AppTypography.heading.copyWith(
+                color: AppTheme.textPrimary(context),
+              ),
+            ),
+          ),
+          ...onlineThemes.map((theme) => _OnlineMixCard(
+            theme: theme,
+            onTap: onOnlineTap != null ? () => onOnlineTap!(theme) : null,
+            isFavorite: isFavorite(theme.id),
+            onToggleFavorite: () => onToggleFavorite(theme.id),
+          )),
+        ],
+      ],
     );
   }
 }
 
-class _OnlineThemesGrid extends StatelessWidget {
+class _PresetMixCard extends StatelessWidget {
+  const _PresetMixCard({
+    required this.theme,
+    required this.status,
+    required this.onTap,
+    required this.isFavorite,
+    required this.onToggleFavorite,
+  });
+
+  final ThemeModel theme;
+  final PresetCardStatus status;
+  final VoidCallback? onTap;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
+
   @override
   Widget build(BuildContext context) {
-    const themes = OnlineTheme.curated;
-    return GridView.builder(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: AppSpacing.md,
-        mainAxisSpacing: AppSpacing.md,
-        childAspectRatio: 2 / 3,
-      ),
-      itemCount: themes.length,
-      itemBuilder: (context, i) {
-        final theme = themes[i];
-        final accent = Color(theme.accentColorValue);
-        return GestureDetector(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => OnlineThemeApplyScreen(onlineTheme: theme),
+    final accent = theme.accentColor;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: GestureDetector(
+        onTap: onTap,
+        child: ClipRRect(
+          borderRadius: AppRadius.mdRadius,
+          child: SizedBox(
+            height: 120,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  theme.wallpaperAssetPath,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: accent.withValues(alpha: 0.2),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.7),
+                        Colors.black.withValues(alpha: 0.1),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: AppSpacing.sm,
+                  right: AppSpacing.sm,
+                  child: GestureDetector(
+                    onTap: onToggleFavorite,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isFavorite ? Icons.favorite : Icons.favorite_border,
+                        size: 18,
+                        color: isFavorite ? AppTheme.error(context) : Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: _previewIcon(theme.iconPackId),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                theme.name,
+                                style: AppTypography.heading.copyWith(
+                                  color: Colors.white,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                titleCase(theme.iconPackId.replaceAll('_', ' ')),
+                                style: AppTypography.bodySecondary.copyWith(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (status == PresetCardStatus.applied)
+                          Icon(Icons.check_circle, color: AppTheme.success(context), size: 22)
+                        else if (status == PresetCardStatus.applying)
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(Colors.white),
+                            ),
+                          )
+                        else
+                          const Icon(Icons.chevron_right, color: Colors.white54, size: 22),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          child: ClipRRect(
-            borderRadius: AppRadius.lgRadius,
+        ),
+      ),
+    );
+  }
+
+  Widget _previewIcon(String packId) {
+    const keys = ['browser', 'calculator'];
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: keys.map((key) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: Image.asset(
+            'assets/icon_packs/$packId/$key.png',
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Icon(Icons.android, size: 12, color: Colors.white),
+          ),
+        ),
+      )).toList(),
+    );
+  }
+}
+
+class _OnlineMixCard extends StatelessWidget {
+  const _OnlineMixCard({
+    required this.theme,
+    required this.onTap,
+    required this.isFavorite,
+    required this.onToggleFavorite,
+  });
+
+  final OnlineTheme theme;
+  final VoidCallback? onTap;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Color(theme.accentColorValue);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: GestureDetector(
+        onTap: onTap,
+        child: ClipRRect(
+          borderRadius: AppRadius.mdRadius,
+          child: SizedBox(
+            height: 120,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -209,78 +368,92 @@ class _OnlineThemesGrid extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        accent.withValues(alpha: 0.35),
-                        accent.withValues(alpha: 0.1),
+                        accent.withValues(alpha: 0.5),
+                        accent.withValues(alpha: 0.15),
+                      ],
+                    ),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.6),
+                        Colors.black.withValues(alpha: 0.0),
                       ],
                     ),
                   ),
                 ),
                 Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.sm,
-                      AppSpacing.xl,
-                      AppSpacing.sm,
-                      AppSpacing.sm,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
+                  top: AppSpacing.sm,
+                  right: AppSpacing.sm,
+                  child: GestureDetector(
+                    onTap: onToggleFavorite,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: AppSpacing.xs),
-                        Expanded(
-                          child: Text(
-                            theme.name,
-                            style: AppTypography.body.copyWith(color: Colors.white),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+                      child: Icon(
+                        isFavorite ? Icons.favorite : Icons.favorite_border,
+                        size: 18,
+                        color: isFavorite ? AppTheme.error(context) : Colors.white,
+                      ),
                     ),
                   ),
                 ),
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.language, color: accent, size: 36),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        theme.name,
-                        style: AppTypography.heading.copyWith(
-                          color: Colors.white,
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.language, color: Colors.white, size: 22),
                         ),
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        titleCase(theme.category),
-                        style: AppTypography.bodySecondary.copyWith(
-                          color: Colors.white70,
-                          fontSize: 11,
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                theme.name,
+                                style: AppTypography.heading.copyWith(
+                                  color: Colors.white,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Online',
+                                style: AppTypography.bodySecondary.copyWith(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        const Icon(Icons.chevron_right, color: Colors.white54, size: 22),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

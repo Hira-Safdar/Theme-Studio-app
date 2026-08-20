@@ -1,27 +1,33 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import '../models/online_icon_pack.dart';
 import '../models/online_theme.dart';
 import '../models/online_wallpaper.dart';
 import '../services/app_strings.dart';
 import '../services/download_service.dart';
+import '../services/icon_pack_api.dart';
 import '../services/icon_pack_service.dart';
 import '../services/icon_matching_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/theme_controller.dart';
 import '../theme/app_theme.dart';
-import '../widgets/pack_selector.dart';
 import '../widgets/wallpaper_preview.dart';
 
-const List<String> _iconPackOptions = ['cartoon', 'flat_colors', 'dark_mode'];
-
-String _iconPackLabel(String id) {
-  switch (id) {
-    case 'flat_colors':
-      return 'Flat Colors';
-    case 'dark_mode':
-      return 'Dark Mode';
-    default:
-      return 'Cartoon';
-  }
+class _PackOption {
+  final String id;
+  final String name;
+  final String description;
+  final bool isBundled;
+  final OnlineIconPack? onlinePack;
+  const _PackOption({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.isBundled,
+    this.onlinePack,
+  });
 }
 
 class OnlineThemeApplyScreen extends StatefulWidget {
@@ -40,11 +46,14 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
   bool _applying = false;
   int _shortcutsTotal = 0;
   int _shortcutsDone = 0;
+  List<_PackOption> _packOptions = [];
+  bool _packsLoading = true;
 
   @override
   void initState() {
     super.initState();
     _fetch();
+    _loadPacks();
   }
 
   Future<void> _fetch() async {
@@ -62,6 +71,32 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadPacks() async {
+    final options = <_PackOption>[
+      const _PackOption(id: 'dark_mode', name: 'Dark Mode', description: 'Sleek dark-themed icons', isBundled: true),
+      const _PackOption(id: 'cartoon', name: 'Cartoon', description: 'Playful cartoon-style icons', isBundled: true),
+      const _PackOption(id: 'flat_colors', name: 'Flat Colors', description: 'Clean flat-color icons', isBundled: true),
+    ];
+    try {
+      final onlinePacks = await IconPackApi.instance.fetch();
+      for (final pack in onlinePacks) {
+        if (pack.id == 'cartoon') continue;
+        options.add(_PackOption(
+          id: pack.id,
+          name: pack.name,
+          description: pack.description,
+          isBundled: false,
+          onlinePack: pack,
+        ));
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _packOptions = options;
+      _packsLoading = false;
+    });
   }
 
   void _selectWallpaper(OnlineWallpaper wallpaper) {
@@ -96,34 +131,67 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
       final ok = await NativeBridgeService.instance.setWallpaper(localPath, target: target);
 
       final installedApps = await NativeBridgeService.instance.getInstalledApps();
-      final matches = <({String packageName, String label, String iconKey})>[];
-      for (final app in installedApps) {
-        if (!app.isSystemApp) continue;
-        final iconKey = IconMatchingService.instance.guessIconKey(app.packageName, app.label);
-        if (iconKey != null) {
-          matches.add((packageName: app.packageName, label: app.label, iconKey: iconKey));
-        }
-      }
-      _shortcutsTotal = matches.length;
-      if (mounted) setState(() {});
-
+      final selectedPack = _packOptions.where((p) => p.id == _selectedIconPack).firstOrNull;
       final errors = <String>[];
       if (!ok) errors.add('Wallpaper could not be applied');
 
-      for (final match in matches) {
-        try {
-          final shortcutOk = await IconMatchingService.instance.applyBundledIconShortcut(
-            packId: _selectedIconPack,
-            packageName: match.packageName,
-            appLabel: match.label,
-            iconKey: match.iconKey,
-          );
-          if (!shortcutOk) errors.add('Icon shortcut failed for ${match.label}');
-        } catch (e) {
-          errors.add('Icon shortcut error for ${match.label}: $e');
+      if (selectedPack != null && selectedPack.isBundled) {
+        final matches = <({String packageName, String label, String iconKey})>[];
+        for (final app in installedApps) {
+          final iconKey = IconMatchingService.instance.guessIconKey(app.packageName, app.label);
+          if (iconKey != null) {
+            matches.add((packageName: app.packageName, label: app.label, iconKey: iconKey));
+          }
         }
-        _shortcutsDone++;
+        _shortcutsTotal = matches.length;
         if (mounted) setState(() {});
+
+        for (final match in matches) {
+          try {
+            final shortcutOk = await IconMatchingService.instance.applyBundledIconShortcut(
+              packId: _selectedIconPack,
+              packageName: match.packageName,
+              appLabel: match.label,
+              iconKey: match.iconKey,
+            );
+            if (!shortcutOk) errors.add('Icon shortcut failed for ${match.label}');
+          } catch (e) {
+            errors.add('Icon shortcut error for ${match.label}: $e');
+          }
+          _shortcutsDone++;
+          if (mounted) setState(() {});
+        }
+      } else if (selectedPack != null && selectedPack.onlinePack != null) {
+        final pack = selectedPack.onlinePack!;
+        final matchedApps = <({String packageName, String label, String iconUrl})>[];
+        for (final app in installedApps) {
+          final iconUrl = pack.iconUrls[app.packageName];
+          if (iconUrl != null && iconUrl.isNotEmpty) {
+            matchedApps.add((packageName: app.packageName, label: app.label, iconUrl: iconUrl));
+          }
+        }
+        _shortcutsTotal = matchedApps.length;
+        if (mounted) setState(() {});
+
+        for (final match in matchedApps) {
+          try {
+            final tempPath = await _downloadIconToTemp(match.iconUrl, match.packageName);
+            if (tempPath != null) {
+              final shortcutOk = await NativeBridgeService.instance.createIconShortcut(
+                packageName: match.packageName,
+                appLabel: match.label,
+                iconFilePath: tempPath,
+              );
+              if (!shortcutOk) errors.add('Icon shortcut failed for ${match.label}');
+            } else {
+              errors.add('Icon download failed for ${match.label}');
+            }
+          } catch (e) {
+            errors.add('Icon shortcut error for ${match.label}: $e');
+          }
+          _shortcutsDone++;
+          if (mounted) setState(() {});
+        }
       }
 
       ThemeController.instance.setActiveTheme('online_${widget.onlineTheme.id}');
@@ -150,6 +218,24 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
       Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _applying = false);
+    }
+  }
+
+  Future<String?> _downloadIconToTemp(String url, String packageName) async {
+    try {
+      final client = http.Client();
+      try {
+        final response = await client.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
+        if (response.statusCode != 200) return null;
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/online_icon_${packageName.hashCode.abs()}.png');
+        await file.writeAsBytes(response.bodyBytes);
+        return file.path;
+      } finally {
+        client.close();
+      }
+    } catch (_) {
+      return null;
     }
   }
 
@@ -282,42 +368,89 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
   }
 
   Widget _buildPreviewView() {
+    final selectedOption = _packOptions.where((p) => p.id == _selectedIconPack).firstOrNull;
     return Column(
       children: [
         Expanded(
           child: Center(
             child: _PhoneFrame(
               imageUrl: _selectedWallpaper!.thumbnailUrl,
-              iconPackId: _selectedIconPack,
+              selectedPack: selectedOption,
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-          child: PackSelector(
-            options: _iconPackOptions,
-            selected: _selectedIconPack,
-            onChanged: (id) => setState(() => _selectedIconPack = id),
-            labelBuilder: _iconPackLabel,
-          ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding, vertical: AppSpacing.sm),
+          child: Text('Choose Icon Pack', style: AppTypography.label.copyWith(color: AppTheme.textSecondary(context))),
+        ),
+        SizedBox(
+          height: 120,
+          child: _packsLoading
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _packOptions.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, i) {
+                    final pack = _packOptions[i];
+                    final isSelected = pack.id == _selectedIconPack;
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedIconPack = pack.id),
+                      child: AnimatedContainer(
+                        duration: AppMotion.fast,
+                        width: 90,
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppTheme.accentPrimaryMuted(context) : AppTheme.surfaceRaised(context),
+                          borderRadius: AppRadius.mdRadius,
+                          border: Border.all(
+                            color: isSelected ? AppTheme.accentPrimary(context) : AppTheme.borderSubtle(context),
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        padding: const EdgeInsets.all(AppSpacing.sm),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: pack.isBundled
+                                  ? _buildBundledIconPreview(pack.id)
+                                  : _buildOnlineIconPreview(pack.onlinePack),
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                            Text(
+                              pack.name,
+                              style: AppTypography.label.copyWith(
+                                fontSize: 10,
+                                color: isSelected ? AppTheme.accentPrimary(context) : AppTheme.textPrimary(context),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
         const SizedBox(height: AppSpacing.sm),
         Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenPadding,
-            0,
-            AppSpacing.screenPadding,
-            0,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(Icons.info_outline, size: 16, color: AppTheme.accentPrimary(context)),
               const SizedBox(width: AppSpacing.sm),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Wallpaper + icon pack will be applied together. '
-                  'Android confirms each shortcut separately.',
+                  selectedOption != null
+                      ? '${selectedOption.name}: ${selectedOption.description}'
+                      : 'Wallpaper + icon pack will be applied together.',
                   style: AppTypography.bodySecondary,
                 ),
               ),
@@ -373,17 +506,169 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
       ],
     );
   }
+
+  Widget _buildBundledIconPreview(String packId) {
+    const keys = ['browser', 'camera', 'clock', 'settings'];
+    return GridView.count(
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      mainAxisSpacing: 2,
+      crossAxisSpacing: 2,
+      children: keys.map((key) => ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.asset(
+          IconPackService.instance.bundledAssetPath(packId, key),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: AppTheme.surface(context),
+            child: Icon(Icons.android, size: 10, color: AppTheme.textSecondary(context)),
+          ),
+        ),
+      )).toList(),
+    );
+  }
+
+  Widget _buildOnlineIconPreview(OnlineIconPack? pack) {
+    if (pack == null || pack.iconUrls.isEmpty) {
+      return Container(
+        decoration: BoxDecoration(
+          color: AppTheme.surface(context),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Icon(Icons.palette, size: 16, color: AppTheme.textSecondary(context)),
+      );
+    }
+    final urls = pack.iconUrls.values.take(4).toList();
+    return GridView.count(
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      mainAxisSpacing: 2,
+      crossAxisSpacing: 2,
+      children: urls.map((url) => ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: AppTheme.surface(context),
+            child: Icon(Icons.broken_image, size: 8, color: AppTheme.textSecondary(context)),
+          ),
+        ),
+      )).toList(),
+    );
+  }
 }
 
 class _PhoneFrame extends StatelessWidget {
-  const _PhoneFrame({required this.imageUrl, required this.iconPackId});
+  const _PhoneFrame({required this.imageUrl, required this.selectedPack});
   final String imageUrl;
-  final String iconPackId;
-
-  static const _previewIconKeys = ['browser', 'calculator', 'camera', 'clock'];
+  final _PackOption? selectedPack;
 
   @override
   Widget build(BuildContext context) {
+    if (selectedPack != null && selectedPack!.isBundled) {
+      const keys = ['browser', 'calculator', 'camera', 'clock'];
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: AspectRatio(
+            aspectRatio: 9 / 19.5,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: AppTheme.borderFocus(context), width: 6),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(imageUrl, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(color: AppTheme.surfaceRaised(context)),
+                  ),
+                  _buildStatusBar(),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: AppSpacing.xl,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: keys.map((key) => Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: AppRadius.mdRadius,
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.asset(
+                          IconPackService.instance.bundledAssetPath(selectedPack!.id, key),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.android,
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } else if (selectedPack != null && selectedPack!.onlinePack != null) {
+      final urls = selectedPack!.onlinePack!.iconUrls.values.take(4).toList();
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: AspectRatio(
+            aspectRatio: 9 / 19.5,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: AppTheme.borderFocus(context), width: 6),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(imageUrl, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(color: AppTheme.surfaceRaised(context)),
+                  ),
+                  _buildStatusBar(),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: AppSpacing.xl,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: urls.map((url) => Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: AppRadius.mdRadius,
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.network(
+                          url,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.android,
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 300),
@@ -395,79 +680,48 @@ class _PhoneFrame extends StatelessWidget {
               border: Border.all(color: AppTheme.borderFocus(context), width: 6),
             ),
             clipBehavior: Clip.antiAlias,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.network(imageUrl, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(color: AppTheme.surfaceRaised(context)),
-                ),
-                const Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Opacity(
-                    opacity: 0.55,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md,
-                        vertical: AppSpacing.sm,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '9:41',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              Icon(Icons.signal_cellular_alt, color: Colors.white, size: 14),
-                              SizedBox(width: 4),
-                              Icon(Icons.wifi, color: Colors.white, size: 14),
-                              SizedBox(width: 4),
-                              Icon(Icons.battery_full, color: Colors.white, size: 14),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: AppSpacing.xl,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: _previewIconKeys
-                        .map(
-                          (key) => Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.15),
-                              borderRadius: AppRadius.mdRadius,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Image.asset(
-                              IconPackService.instance.bundledAssetPath(iconPackId, key),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Icon(
-                                Icons.android,
-                                color: Colors.white.withValues(alpha: 0.85),
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              ],
+            child: Image.network(imageUrl, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(color: AppTheme.surfaceRaised(context)),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBar() {
+    return const Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Opacity(
+        opacity: 0.55,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '9:41',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Row(
+                children: [
+                  Icon(Icons.signal_cellular_alt, color: Colors.white, size: 14),
+                  SizedBox(width: 4),
+                  Icon(Icons.wifi, color: Colors.white, size: 14),
+                  SizedBox(width: 4),
+                  Icon(Icons.battery_full, color: Colors.white, size: 14),
+                ],
+              ),
+            ],
           ),
         ),
       ),
