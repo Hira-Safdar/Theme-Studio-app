@@ -9,6 +9,7 @@ import '../services/app_strings.dart';
 import '../services/icon_matching_service.dart';
 import '../services/icon_pack_service.dart';
 import '../services/native_bridge_service.dart';
+import '../services/ad_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/icon_list_row.dart';
 
@@ -422,6 +423,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     for (final app in targets) {
       await _applyIcon(app);
     }
+    if (mounted) AdService.instance.showInterstitialIfReady();
   }
 
   Future<void> _pickCustomIcon(AppEntry app) async {

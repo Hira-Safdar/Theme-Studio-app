@@ -31,6 +31,14 @@ class CalendarWidgetProvider : AppWidgetProvider() {
                 secondaryIds = listOf(R.id.calendar_day_text),
                 primaryIds = listOf(R.id.calendar_date_text)
             )
+            WidgetStyleHelper.applyCustomization(
+                context, views,
+                primaryIds = listOf(R.id.calendar_date_text),
+                secondaryIds = listOf(R.id.calendar_day_text)
+            )
+            WidgetStyleHelper.applyBackgroundCustomization(
+                context, views, R.id.widget_root, style, mode
+            )
             views.setTextViewText(R.id.calendar_day_text, dayName)
             views.setTextViewText(R.id.calendar_date_text, dateNum)
             views.setOnClickPendingIntent(

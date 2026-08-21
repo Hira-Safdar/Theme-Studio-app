@@ -3,7 +3,6 @@ import 'screens/home_screen.dart';
 import 'screens/wallpaper_screen.dart';
 import 'screens/online_icon_packs_screen.dart';
 import 'screens/widgets_screen.dart';
-import 'screens/control_center_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/notes_editor_screen.dart';
 import 'screens/weather_location_screen.dart';
@@ -14,6 +13,7 @@ import 'services/locale_controller.dart';
 import 'services/native_bridge_service.dart';
 import 'services/theme_mode_controller.dart';
 import 'services/wallpaper_favorites_service.dart';
+import 'services/ad_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 
@@ -30,15 +30,17 @@ class ThemeStudioApp extends StatefulWidget {
   State<ThemeStudioApp> createState() => _ThemeStudioAppState();
 }
 
-class _ThemeStudioAppState extends State<ThemeStudioApp> {
+class _ThemeStudioAppState extends State<ThemeStudioApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     LocaleController.instance.load();
     ThemeModeController.instance.load();
     FavoritesService.instance.load();
     WallpaperFavoritesService.instance.load();
     DownloadService.instance.load();
+    AdService.instance.load();
 
     NativeBridgeService.instance.setIncomingCallHandler((method) async {
       if (method == 'openNotesEditor') {
@@ -52,6 +54,19 @@ class _ThemeStudioAppState extends State<ThemeStudioApp> {
         navigatorKey.currentState?.pushNamed('/weather_location');
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      AdService.instance.showAppOpenIfReady();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
@@ -94,7 +109,6 @@ class _RootShellState extends State<RootShell> {
       case 1: return const WallpaperScreen();
       case 2: return const OnlineIconPacksScreen();
       case 3: return const WidgetsScreen();
-      case 4: return const ControlCenterScreen();
       default: return const HomeScreen();
     }
   }
@@ -111,7 +125,6 @@ class _RootShellState extends State<RootShell> {
           NavigationDestination(icon: const Icon(Icons.wallpaper), label: tr('nav_wallpaper')),
           NavigationDestination(icon: const Icon(Icons.apps), label: tr('nav_icons')),
           NavigationDestination(icon: const Icon(Icons.widgets), label: tr('nav_widgets')),
-          NavigationDestination(icon: const Icon(Icons.tune), label: tr('nav_control')),
         ],
       ),
     );

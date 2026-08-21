@@ -22,6 +22,8 @@ class ClockWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.widget_clock)
             WidgetStyleHelper.applyBackground(views, R.id.widget_root, style, mode)
             WidgetStyleHelper.applyTextColors(views, mode, primaryIds = listOf(R.id.clock_text))
+            WidgetStyleHelper.applyCustomization(context, views, primaryIds = listOf(R.id.clock_text))
+            WidgetStyleHelper.applyBackgroundCustomization(context, views, R.id.widget_root, style, mode)
             val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
             views.setTextViewText(R.id.clock_text, time)
             views.setOnClickPendingIntent(

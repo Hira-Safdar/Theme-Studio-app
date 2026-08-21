@@ -7,8 +7,10 @@ import '../services/app_strings.dart';
 import '../services/download_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/icon_pack_service.dart';
+import '../services/ad_service.dart';
 import '../services/wallpaper_favorites_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/banner_ad_widget.dart';
 import '../widgets/wallpaper_preview.dart';
 
 const List<String> _categories = ['nature', 'abstract', 'dark', 'minimal'];
@@ -125,6 +127,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
 
   void _showResult(bool ok) {
     if (!mounted) return;
+    if (ok) AdService.instance.showInterstitialIfReady();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(ok ? tr('wallpaper_applied') : tr('wallpaper_failed'))),
     );
@@ -179,31 +182,38 @@ class _WallpaperScreenState extends State<WallpaperScreen>
               ),
             ],
           ),
-          body: _loading || _applying
-              ? const Center(child: CircularProgressIndicator())
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _MyWallpapersGrid(
-                      onApply: _previewThenApplyFromMy,
-                      onImport: _importFromGallery,
-                    ),
-                    _OnlineWallpaperGrid(onApply: _previewThenApplyFromOnline),
-                    ..._categories.map((category) {
-                      final wallpapers = _wallpapersByCategory[category] ?? [];
-                      if (wallpapers.isEmpty) {
-                        return Center(
-                          child: Text(tr('no_wallpapers_found'), style: AppTypography.bodySecondary),
-                        );
-                      }
-                      return _AssetWallpaperGrid(
-                        wallpapers: wallpapers,
-                        onApply: _previewThenApplyFromAsset,
-                        showFavoritesOnly: _showFavoritesOnly,
-                      );
-                    }),
-                  ],
-                ),
+          body: Column(
+            children: [
+              Expanded(
+                child: _loading || _applying
+                    ? const Center(child: CircularProgressIndicator())
+                    : TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _MyWallpapersGrid(
+                            onApply: _previewThenApplyFromMy,
+                            onImport: _importFromGallery,
+                          ),
+                          _OnlineWallpaperGrid(onApply: _previewThenApplyFromOnline),
+                          ..._categories.map((category) {
+                            final wallpapers = _wallpapersByCategory[category] ?? [];
+                            if (wallpapers.isEmpty) {
+                              return Center(
+                                child: Text(tr('no_wallpapers_found'), style: AppTypography.bodySecondary),
+                              );
+                            }
+                            return _AssetWallpaperGrid(
+                              wallpapers: wallpapers,
+                              onApply: _previewThenApplyFromAsset,
+                              showFavoritesOnly: _showFavoritesOnly,
+                            );
+                          }),
+                        ],
+                      ),
+              ),
+              const Center(child: BannerAdWidget()),
+            ],
+          ),
         );
       },
     );

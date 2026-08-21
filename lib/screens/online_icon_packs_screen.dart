@@ -3,6 +3,7 @@ import '../models/online_icon_pack.dart';
 import '../services/icon_matching_service.dart';
 import '../services/icon_pack_api.dart';
 import '../theme/app_theme.dart';
+import '../widgets/banner_ad_widget.dart';
 import 'icon_changer_screen.dart';
 
 const Map<String, List<Color>> _packGradients = {
@@ -337,6 +338,9 @@ class _OnlineIconPacksScreenState extends State<OnlineIconPacksScreen> {
               ],
             ),
           ),
+
+          // ── Banner Ad ──
+          const Center(child: BannerAdWidget()),
         ],
       ),
     );

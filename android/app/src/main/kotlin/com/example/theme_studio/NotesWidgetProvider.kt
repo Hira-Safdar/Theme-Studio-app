@@ -23,6 +23,8 @@ class NotesWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.widget_notes)
             WidgetStyleHelper.applyBackground(views, R.id.widget_root, style, mode)
             WidgetStyleHelper.applyTextColors(views, mode, secondaryIds = listOf(R.id.notes_text))
+            WidgetStyleHelper.applyCustomization(context, views, secondaryIds = listOf(R.id.notes_text))
+            WidgetStyleHelper.applyBackgroundCustomization(context, views, R.id.widget_root, style, mode)
             views.setTextViewText(R.id.notes_text, noteText)
             views.setOnClickPendingIntent(
                 R.id.widget_root,

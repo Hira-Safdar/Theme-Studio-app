@@ -60,46 +60,58 @@ class ThemeController extends ChangeNotifier {
       debugPrint('ThemeController: Icon pack save error: $e');
     }
 
-    // Step 3: Installed apps ko bundled icon se match karke shortcuts request karo.
+    // Step 3: Installed apps ko bundled icon se match karke batch mein shortcuts add karo.
     try {
       final installedApps = await NativeBridgeService.instance.getInstalledApps();
-      final matches = <({String packageName, String label, String iconKey})>[];
+      debugPrint('ThemeController: getInstalledApps returned ${installedApps.length} apps');
+      final shortcuts = <({String packageName, String appLabel, String iconFilePath})>[];
+
+      final pending = <Future<void>>[];
+      const concurrency = 5;
+      var active = 0;
+
       for (final app in installedApps) {
         final iconKey = IconMatchingService.instance.guessIconKey(app.packageName, app.label);
         if (iconKey != null) {
-          matches.add((packageName: app.packageName, label: app.label, iconKey: iconKey));
-        }
-      }
-
-      shortcutsTotal = matches.length;
-      debugPrint('ThemeController: Found ${matches.length} matching apps');
-      notifyListeners(); // taake UI turant "0 of N" dikha sake
-
-      for (final match in matches) {
-        try {
-          final ok = await IconMatchingService.instance.applyBundledIconShortcut(
-            packId: theme.iconPackId,
-            packageName: match.packageName,
-            appLabel: match.label,
-            iconKey: match.iconKey,
-          );
-          if (!ok) {
-            lastErrors.add('Icon shortcut failed for ${match.label}');
-            debugPrint('ThemeController: Shortcut failed for ${match.label}');
-          } else {
-            debugPrint('ThemeController: Shortcut succeeded for ${match.label}');
+          while (active >= concurrency) {
+            await pending.removeAt(0);
+            active--;
           }
-        } catch (e) {
-          lastErrors.add('Icon shortcut error for ${match.label}: $e');
-          debugPrint('ThemeController: Shortcut error for ${match.label}: $e');
+          active++;
+          pending.add(Future(() async {
+            try {
+              final assetPath = IconPackService.instance.bundledAssetPath(theme.iconPackId, iconKey);
+              final filePath = await IconPackService.instance.assetToFile(assetPath, app.packageName);
+              debugPrint('ThemeController: Prepared shortcut for ${app.label} (${app.packageName}) key=$iconKey file=$filePath');
+              shortcuts.add((packageName: app.packageName, appLabel: app.label, iconFilePath: filePath));
+            } catch (e) {
+              debugPrint('ThemeController: Icon prepare FAILED for ${app.label}: $e');
+              lastErrors.add('Icon prepare failed for ${app.label}: $e');
+            }
+          }));
         }
-        shortcutsDone++;
-        notifyListeners(); // progress UI ko live update karta hai
       }
-      debugPrint('ThemeController: Icon shortcuts step completed with ${lastErrors.where((e) => e.contains('shortcut')).length} errors');
+
+      if (pending.isNotEmpty) await Future.wait(pending);
+
+      shortcutsTotal = shortcuts.length;
+      debugPrint('ThemeController: ${shortcuts.length} shortcuts ready to pin (theme.iconPackId=${theme.iconPackId})');
+      notifyListeners();
+
+      if (shortcuts.isEmpty) {
+        debugPrint('ThemeController: WARNING - no shortcuts to pin! guessIconKey returned null for all ${installedApps.length} apps');
+      } else {
+        final added = await NativeBridgeService.instance.batchCreateShortcuts(shortcuts: shortcuts);
+        shortcutsDone = added;
+        debugPrint('ThemeController: batchCreateShortcuts returned $added/${shortcuts.length}');
+        if (added == 0) {
+          lastErrors.add('No shortcuts could be created');
+        }
+        notifyListeners();
+      }
     } catch (e) {
       lastErrors.add('Could not read installed apps: $e');
-      debugPrint('ThemeController: Could not read installed apps: $e');
+      debugPrint('ThemeController: ERROR in shortcuts step: $e');
     }
 
     debugPrint('ThemeController: Total errors: ${lastErrors.length}');

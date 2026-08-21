@@ -88,6 +88,59 @@ object WidgetStyleHelper {
         secondaryIds.forEach { views.setTextColor(it, secondary) }
     }
 
+    /// User ne Flutter side se jo customization ki (fontSize, textColor,
+    /// bgOpacity, cornerRadius) wo SharedPreferences mein save hoti hain --
+    /// ye method un values ko RemoteViews pe apply karta hai.
+    fun applyCustomization(
+        context: Context,
+        views: RemoteViews,
+        primaryIds: List<Int> = emptyList(),
+        secondaryIds: List<Int> = emptyList()
+    ) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // Text color — hex string "#RRGGBB"
+        val textColorHex = prefs.getString("widget_text_color", null)
+        if (textColorHex != null) {
+            try {
+                val color = android.graphics.Color.parseColor(textColorHex)
+                (primaryIds + secondaryIds).forEach { views.setTextColor(it, color) }
+            } catch (_: Exception) {}
+        }
+    }
+
+    /// Corner radius aur background opacity ko programmatic GradientDrawable
+    /// se apply karta hai -- RemoteViews drawable resource se ye nahi kar
+    /// sakti, isliye runtime par shape banate hain.
+    fun applyBackgroundCustomization(
+        context: Context,
+        views: RemoteViews,
+        rootViewId: Int,
+        style: String,
+        mode: String
+    ) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val bgOpacity = prefs.getFloat("widget_bg_opacity", 0.85f)
+        val cornerRadius = prefs.getFloat("widget_corner_radius", 12f)
+        val isLight = mode == MODE_LIGHT
+
+        // Base color style/mode se
+        val baseColor = when {
+            style == "gradient" -> if (isLight) android.graphics.Color.parseColor("#B8FFF9") else android.graphics.Color.parseColor("#1A1A2E")
+            style == "neon" -> if (isLight) android.graphics.Color.parseColor("#F4FDFC") else android.graphics.Color.parseColor("#0A0A12")
+            else -> if (isLight) android.graphics.Color.parseColor("#F2EFEC") else android.graphics.Color.parseColor("#1E1E2E")
+        }
+
+        val alpha = (bgOpacity * 255).toInt().coerceIn(0, 255)
+        val colorWithAlpha = android.graphics.Color.argb(alpha,
+            android.graphics.Color.red(baseColor),
+            android.graphics.Color.green(baseColor),
+            android.graphics.Color.blue(baseColor)
+        )
+
+        views.setInt(rootViewId, "setBackgroundColor", colorWithAlpha)
+    }
+
     // ---------------- LIVE REFRESH TICKER (Clock + Battery) ----------------
     // widget_info.xml ka `updatePeriodMillis` OS ki taraf se kam-se-kam
     // 30 minute par floor hota hai (aur kai OEMs isse aur bhi throttle kar

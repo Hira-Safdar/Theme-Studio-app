@@ -32,6 +32,14 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 primaryIds = listOf(R.id.weather_temp_text),
                 secondaryIds = listOf(R.id.weather_condition_text, R.id.weather_location_text)
             )
+            WidgetStyleHelper.applyCustomization(
+                context, views,
+                primaryIds = listOf(R.id.weather_temp_text),
+                secondaryIds = listOf(R.id.weather_condition_text, R.id.weather_location_text)
+            )
+            WidgetStyleHelper.applyBackgroundCustomization(
+                context, views, R.id.widget_root, style, mode
+            )
             views.setTextViewText(R.id.weather_temp_text, tempText)
             views.setTextViewText(R.id.weather_condition_text, conditionText)
             if (locationText.isNullOrBlank()) {

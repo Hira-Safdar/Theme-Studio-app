@@ -76,6 +76,12 @@ class BatteryWidgetProvider : AppWidgetProvider() {
             WidgetStyleHelper.applyTextColors(
                 views, mode, primaryIds = listOf(R.id.battery_percentage_text)
             )
+            WidgetStyleHelper.applyCustomization(
+                context, views, primaryIds = listOf(R.id.battery_percentage_text)
+            )
+            WidgetStyleHelper.applyBackgroundCustomization(
+                context, views, R.id.widget_root, style, mode
+            )
             views.setTextViewText(R.id.battery_percentage_text, "$percentage%")
             views.setOnClickPendingIntent(
                 R.id.widget_root,

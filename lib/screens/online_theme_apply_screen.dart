@@ -12,6 +12,7 @@ import '../services/icon_pack_service.dart';
 import '../services/icon_matching_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/theme_controller.dart';
+import '../services/ad_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/wallpaper_preview.dart';
 
@@ -128,70 +129,95 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
     setState(() => _applying = true);
 
     try {
+      debugPrint('===== _applyFromLocal START: target=$target, wallpaper=$localPath =====');
       final ok = await NativeBridgeService.instance.setWallpaper(localPath, target: target);
+      debugPrint('ThemeApply: setWallpaper returned $ok');
 
       final installedApps = await NativeBridgeService.instance.getInstalledApps();
+      debugPrint('ThemeApply: ${installedApps.length} installed apps');
       final selectedPack = _packOptions.where((p) => p.id == _selectedIconPack).firstOrNull;
+      debugPrint('ThemeApply: selectedPack id=${selectedPack?.id} isBundled=${selectedPack?.isBundled} online=${selectedPack?.onlinePack?.name}');
       final errors = <String>[];
       if (!ok) errors.add('Wallpaper could not be applied');
 
+      final shortcuts = <({String packageName, String appLabel, String iconFilePath})>[];
+
       if (selectedPack != null && selectedPack.isBundled) {
-        final matches = <({String packageName, String label, String iconKey})>[];
+        debugPrint('ThemeApply: Using BUNDLED pack path');
         for (final app in installedApps) {
           final iconKey = IconMatchingService.instance.guessIconKey(app.packageName, app.label);
           if (iconKey != null) {
-            matches.add((packageName: app.packageName, label: app.label, iconKey: iconKey));
+            try {
+              final assetPath = IconPackService.instance.bundledAssetPath(selectedPack.id, iconKey);
+              final filePath = await IconPackService.instance.assetToFile(assetPath, app.packageName);
+              debugPrint('ThemeApply: [BUNDLED] ${app.label} -> key=$iconKey file=$filePath');
+              shortcuts.add((packageName: app.packageName, appLabel: app.label, iconFilePath: filePath));
+            } catch (e) {
+              debugPrint('ThemeApply: [BUNDLED] ${app.label} FAILED: $e');
+              errors.add('Icon prepare failed for ${app.label}: $e');
+            }
           }
-        }
-        _shortcutsTotal = matches.length;
-        if (mounted) setState(() {});
-
-        for (final match in matches) {
-          try {
-            final shortcutOk = await IconMatchingService.instance.applyBundledIconShortcut(
-              packId: _selectedIconPack,
-              packageName: match.packageName,
-              appLabel: match.label,
-              iconKey: match.iconKey,
-            );
-            if (!shortcutOk) errors.add('Icon shortcut failed for ${match.label}');
-          } catch (e) {
-            errors.add('Icon shortcut error for ${match.label}: $e');
-          }
-          _shortcutsDone++;
-          if (mounted) setState(() {});
         }
       } else if (selectedPack != null && selectedPack.onlinePack != null) {
         final pack = selectedPack.onlinePack!;
-        final matchedApps = <({String packageName, String label, String iconUrl})>[];
+        debugPrint('ThemeApply: Using ONLINE pack "${pack.name}" (${pack.iconUrls.length} icon URLs)');
+
+        final pending = <Future<void>>[];
+        final client = http.Client();
+        final tempDir = await getTemporaryDirectory();
+        const concurrency = 5;
+        var active = 0;
+
         for (final app in installedApps) {
           final iconUrl = pack.iconUrls[app.packageName];
           if (iconUrl != null && iconUrl.isNotEmpty) {
-            matchedApps.add((packageName: app.packageName, label: app.label, iconUrl: iconUrl));
-          }
-        }
-        _shortcutsTotal = matchedApps.length;
-        if (mounted) setState(() {});
-
-        for (final match in matchedApps) {
-          try {
-            final tempPath = await _downloadIconToTemp(match.iconUrl, match.packageName);
-            if (tempPath != null) {
-              final shortcutOk = await NativeBridgeService.instance.createIconShortcut(
-                packageName: match.packageName,
-                appLabel: match.label,
-                iconFilePath: tempPath,
-              );
-              if (!shortcutOk) errors.add('Icon shortcut failed for ${match.label}');
-            } else {
-              errors.add('Icon download failed for ${match.label}');
+            while (active >= concurrency) {
+              await pending.removeAt(0);
+              active--;
             }
-          } catch (e) {
-            errors.add('Icon shortcut error for ${match.label}: $e');
+            active++;
+            pending.add(Future(() async {
+              try {
+                final response = await client.get(Uri.parse(iconUrl)).timeout(const Duration(seconds: 8));
+                if (response.statusCode == 200) {
+                  final file = File('${tempDir.path}/online_icon_${app.packageName.hashCode.abs()}.png');
+                  await file.writeAsBytes(response.bodyBytes);
+                  shortcuts.add((packageName: app.packageName, appLabel: app.label, iconFilePath: file.path));
+                  debugPrint('ThemeApply: [ONLINE] ${app.label} (${app.packageName}) OK');
+                } else {
+                  errors.add('Icon download failed for ${app.label}');
+                }
+              } catch (e) {
+                errors.add('Icon download error for ${app.label}: $e');
+              }
+            }));
           }
-          _shortcutsDone++;
-          if (mounted) setState(() {});
         }
+
+        if (pending.isNotEmpty) {
+          await Future.wait(pending);
+          client.close();
+        }
+        debugPrint('ThemeApply: ${shortcuts.length} online shortcuts prepared from ${installedApps.length} apps');
+      } else {
+        debugPrint('ThemeApply: WARNING - no pack selected! selectedPack=$selectedPack');
+      }
+
+      _shortcutsTotal = shortcuts.length;
+      debugPrint('ThemeApply: Total shortcuts to pin: ${shortcuts.length}');
+      if (mounted) setState(() {});
+
+      if (shortcuts.isNotEmpty) {
+        debugPrint('ThemeApply: Calling batchCreateShortcuts with ${shortcuts.length} shortcuts...');
+        final added = await NativeBridgeService.instance.batchCreateShortcuts(shortcuts: shortcuts);
+        _shortcutsDone = added;
+        debugPrint('ThemeApply: batchCreateShortcuts returned $added/${shortcuts.length}');
+        if (added == 0 && shortcuts.isNotEmpty) {
+          errors.add('No shortcuts could be created');
+        }
+        if (mounted) setState(() {});
+      } else {
+        debugPrint('ThemeApply: WARNING - NO shortcuts to pin!');
       }
 
       ThemeController.instance.setActiveTheme('online_${widget.onlineTheme.id}');
@@ -215,27 +241,10 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
       );
 
       if (!mounted) return;
+      AdService.instance.showInterstitialIfReady();
       Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _applying = false);
-    }
-  }
-
-  Future<String?> _downloadIconToTemp(String url, String packageName) async {
-    try {
-      final client = http.Client();
-      try {
-        final response = await client.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
-        if (response.statusCode != 200) return null;
-        final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/online_icon_${packageName.hashCode.abs()}.png');
-        await file.writeAsBytes(response.bodyBytes);
-        return file.path;
-      } finally {
-        client.close();
-      }
-    } catch (_) {
-      return null;
     }
   }
 
@@ -590,25 +599,34 @@ class _PhoneFrame extends StatelessWidget {
                     left: 0,
                     right: 0,
                     bottom: AppSpacing.xl,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: keys.map((key) => Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: AppRadius.mdRadius,
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Image.asset(
-                          IconPackService.instance.bundledAssetPath(selectedPack!.id, key),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Icon(
-                            Icons.android,
-                            color: Colors.white.withValues(alpha: 0.85),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: keys.map((key) => Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.15),
+                                  borderRadius: AppRadius.mdRadius,
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Image.asset(
+                                  IconPackService.instance.bundledAssetPath(selectedPack!.id, key),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Icon(
+                                    Icons.android,
+                                    color: Colors.white.withValues(alpha: 0.85),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      )).toList(),
+                        )).toList(),
+                      ),
                     ),
                   ),
                 ],
@@ -641,25 +659,34 @@ class _PhoneFrame extends StatelessWidget {
                     left: 0,
                     right: 0,
                     bottom: AppSpacing.xl,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: urls.map((url) => Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: AppRadius.mdRadius,
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Image.network(
-                          url,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Icon(
-                            Icons.android,
-                            color: Colors.white.withValues(alpha: 0.85),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: urls.map((url) => Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.15),
+                                  borderRadius: AppRadius.mdRadius,
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Image.network(
+                                  url,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Icon(
+                                    Icons.android,
+                                    color: Colors.white.withValues(alpha: 0.85),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      )).toList(),
+                        )).toList(),
+                      ),
                     ),
                   ),
                 ],

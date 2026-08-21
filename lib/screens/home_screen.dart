@@ -5,6 +5,7 @@ import '../services/app_strings.dart';
 import '../services/favorites_service.dart';
 import '../services/theme_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/banner_ad_widget.dart';
 import '../widgets/preset_theme_card.dart' show PresetCardStatus;
 import 'theme_preview_screen.dart';
 import 'online_theme_apply_screen.dart';
@@ -179,6 +180,8 @@ class _MixGrid extends StatelessWidget {
             onToggleFavorite: () => onToggleFavorite(theme.id),
           )),
         ],
+        const SizedBox(height: AppSpacing.md),
+        const Center(child: BannerAdWidget()),
       ],
     );
   }

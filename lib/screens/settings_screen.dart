@@ -146,18 +146,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       'Once pinned, the widget updates itself in the background.',
                 ),
               ),
-              SettingsRow(
-                icon: Icons.tune,
-                label: tr('settings_how_control'),
-                onTap: () => _openExplainer(
-                  tr('settings_how_control'),
-                  "Control Center is an overlay drawn using Android's Accessibility "
-                      'Service. That service needs to be turned on once in Android '
-                      'Settings - Android requires this to be a manual, explicit step. '
-                      "Once it's on, swipe down from the top of the screen to open "
-                      'the overlay from anywhere.',
-                ),
-              ),
+
               SettingsRow(
                 icon: Icons.mail_outline,
                 label: tr('settings_send_feedback'),

@@ -96,6 +96,32 @@ class NativeBridgeService {
     }
   }
 
+  /// Batch mein sab icons silently add karta hai — bina kisi permission
+  /// dialog ke. requestPinShortcut har icon ke liye ek dialog dikhata hai,
+  /// lekin addDynamicShortcuts sab ko ek saath silent tareeqe se add karta
+  /// hai. Theme apply ke liye ideal. Kitne icons successfully add hue woh
+  /// count return karta hai.
+  Future<int> batchCreateShortcuts({
+    required List<({String packageName, String appLabel, String iconFilePath})> shortcuts,
+  }) async {
+    if (!Platform.isAndroid || shortcuts.isEmpty) return 0;
+    try {
+      final result = await _channel.invokeMethod<int>('batchSetShortcuts', {
+        'shortcuts': shortcuts
+            .map((s) => {
+                  'packageName': s.packageName,
+                  'appLabel': s.appLabel,
+                  'iconPath': s.iconFilePath,
+                })
+            .toList(),
+      });
+      return result ?? 0;
+    } catch (e) {
+      debugPrint('Batch shortcut creation failed: $e');
+      return 0;
+    }
+  }
+
   /// Device par jitni bhi "launchable" apps installed hain unki real list
   /// (package name + label) -- demoApps ki jagah ye use hoti hai, taake
   /// Samsung/Infinix/koi bhi OEM ho, sahi package names hi milein.

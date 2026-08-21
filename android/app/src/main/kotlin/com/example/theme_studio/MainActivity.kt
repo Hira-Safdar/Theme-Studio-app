@@ -135,6 +135,164 @@ class MainActivity : FlutterActivity() {
                     val iconPath = call.argument<String>("iconPath")
                     createCustomIconShortcut(packageName, appLabel, iconPath, result)
                 }
+                // Batch shortcuts — requestPinShortcut se sab icons ek saath
+                // home screen par pin karte hain. Pehli baar dialog aata hai,
+                // uske baad auto-accept.
+                "batchSetShortcuts" -> {
+                    val shortcutsRaw = call.argument<List<Map<String, Any>>>("shortcuts")
+                    Log.d("ThemeStudio", "===== batchSetShortcuts: received ${shortcutsRaw?.size ?: 0} shortcuts from Dart =====")
+                    if (shortcutsRaw == null || shortcutsRaw.isEmpty()) {
+                        Log.w("ThemeStudio", "batchSetShortcuts: EMPTY list, nothing to do")
+                        result.success(0)
+                    } else {
+                        Thread {
+                            try {
+                                val shortcutInfos = mutableListOf<ShortcutInfo>()
+                                val skipped = mutableListOf<String>()
+                                for ((idx, raw) in shortcutsRaw.withIndex()) {
+                                    try {
+                                        val packageName = raw["packageName"] as? String
+                                        val appLabel = raw["appLabel"] as? String
+                                        val iconPath = raw["iconPath"] as? String
+                                        Log.d("ThemeStudio", "batchSetShortcuts: [$idx/${shortcutsRaw.size}] pkg=$packageName label=$appLabel icon=$iconPath")
+
+                                        if (packageName == null) { skipped.add("null-packageName"); continue }
+                                        if (appLabel == null) { skipped.add("null-appLabel"); continue }
+                                        if (iconPath == null) { skipped.add("null-iconPath"); continue }
+
+                                        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                                        if (launchIntent == null) { Log.w("ThemeStudio", "batchSetShortcuts: [$packageName] NO launch intent"); skipped.add("$packageName:noIntent"); continue }
+                                        launchIntent.action = Intent.ACTION_MAIN
+
+                                        val iconFile = File(iconPath)
+                                        if (!iconFile.exists()) { Log.w("ThemeStudio", "batchSetShortcuts: [$packageName] icon file MISSING: $iconPath"); skipped.add("$packageName:noFile"); continue }
+
+                                        val bitmap = BitmapFactory.decodeFile(iconPath)
+                                        if (bitmap == null) { Log.w("ThemeStudio", "batchSetShortcuts: [$packageName] bitmap decode FAILED"); skipped.add("$packageName:noBitmap"); continue }
+
+                                        val customIcon = Icon.createWithBitmap(bitmap)
+                                        val shortcutId = "theme_studio_$packageName"
+
+                                        val shortcut = ShortcutInfo.Builder(this, shortcutId)
+                                            .setShortLabel(appLabel)
+                                            .setLongLabel(appLabel)
+                                            .setIcon(customIcon)
+                                            .setIntent(launchIntent)
+                                            .build()
+
+                                        shortcutInfos.add(shortcut)
+                                        Log.d("ThemeStudio", "batchSetShortcuts: [$packageName] shortcut BUILT OK (id=$shortcutId)")
+                                    } catch (e: Exception) {
+                                        Log.e("ThemeStudio", "batchSetShortcuts: [$idx] BUILD ERROR: ${e.message}", e)
+                                    }
+                                }
+
+                                Log.d("ThemeStudio", "batchSetShortcuts: ${shortcutInfos.size} built, ${skipped.size} skipped: $skipped")
+
+                                runOnUiThread {
+                                    try {
+                                        val sm = getSystemService(ShortcutManager::class.java)
+                                        if (sm == null) {
+                                            Log.e("ThemeStudio", "batchSetShortcuts: ShortcutManager is NULL")
+                                            result.success(0); return@runOnUiThread
+                                        }
+                                        Log.d("ThemeStudio", "batchSetShortcuts: ShortcutManager OK, ${shortcutInfos.size} shortcuts to pin")
+
+                                        val handler = Handler(Looper.getMainLooper())
+                                        var count = 0
+                                        var idx = 0
+                                        var activeReceiver: BroadcastReceiver? = null
+                                        var activeTimeout: Runnable? = null
+
+                                        fun cleanup() {
+                                            activeTimeout?.let { handler.removeCallbacks(it) }
+                                            activeReceiver?.let {
+                                                try { unregisterReceiver(it) } catch (_: Exception) {}
+                                            }
+                                            activeReceiver = null
+                                            activeTimeout = null
+                                        }
+
+                                        fun pinNext() {
+                                            if (idx >= shortcutInfos.size) {
+                                                Log.d("ThemeStudio", "===== batchSetShortcuts DONE: $count/${shortcutInfos.size} pinned =====")
+                                                result.success(count)
+                                                return
+                                            }
+                                            val shortcut = shortcutInfos[idx]
+                                            idx++
+                                            try {
+                                                val alreadyPinned = sm.pinnedShortcuts.any { it.id == shortcut.id }
+                                                if (alreadyPinned) {
+                                                    sm.updateShortcuts(listOf(shortcut))
+                                                    count++
+                                                    pinNext()
+                                                    return
+                                                }
+
+                                                cleanup()
+
+                                                val requestId = shortcutRequestSeq++
+                                                val action = "$PIN_SHORTCUT_ACTION_PREFIX$requestId"
+
+                                                var settled = false
+
+                                                fun onSettled() {
+                                                    if (settled) return
+                                                    settled = true
+                                                    cleanup()
+                                                    pinNext()
+                                                }
+
+                                                val receiver = object : BroadcastReceiver() {
+                                                    override fun onReceive(context: Context, intent: Intent) {
+                                                        Log.d("ThemeStudio", "batchSetShortcuts: [${shortcut.id}] user confirmed")
+                                                        count++
+                                                        onSettled()
+                                                    }
+                                                }
+                                                activeReceiver = receiver
+
+                                                val filter = IntentFilter(action)
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                    registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                                                } else {
+                                                    @Suppress("UnspecifiedRegisterReceiverFlag")
+                                                    registerReceiver(receiver, filter)
+                                                }
+
+                                                activeTimeout = Runnable {
+                                                    Log.d("ThemeStudio", "batchSetShortcuts: [${shortcut.id}] timeout/cancel")
+                                                    onSettled()
+                                                }
+                                                handler.postDelayed(activeTimeout!!, PIN_SHORTCUT_TIMEOUT_MS)
+
+                                                val callbackIntent = Intent(action).setPackage(applicationContext.packageName)
+                                                val pendingIntent = PendingIntent.getBroadcast(
+                                                    this, requestId, callbackIntent,
+                                                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                                                )
+                                                val ok = sm.requestPinShortcut(shortcut, pendingIntent.intentSender)
+                                                Log.d("ThemeStudio", "batchSetShortcuts: [${shortcut.id}] requestPinShortcut=$ok, waiting for user...")
+                                            } catch (e: Exception) {
+                                                Log.e("ThemeStudio", "batchSetShortcuts: [${shortcut.id}] EXCEPTION: ${e.message}", e)
+                                                pinNext()
+                                            }
+                                        }
+
+                                        pinNext()
+                                    } catch (e: Exception) {
+                                        Log.e("ThemeStudio", "batchSetShortcuts: UI THREAD EXCEPTION: ${e.message}", e)
+                                        result.success(0)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("ThemeStudio", "batchSetShortcuts: BACKGROUND THREAD EXCEPTION: ${e.message}", e)
+                                runOnUiThread { result.success(0) }
+                            }
+                        }.start()
+                    }
+                }
                 "isPinShortcutSupported" -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         val sm = getSystemService(ShortcutManager::class.java)
@@ -215,6 +373,33 @@ class MainActivity : FlutterActivity() {
                 }
                 "getPinnedWidgetCounts" -> {
                     result.success(getPinnedWidgetCounts())
+                }
+
+                // ---------------- WIDGET CUSTOMIZATION ----------------
+                "getWidgetCustomization" -> {
+                    val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+                    result.success(
+                        mapOf(
+                            "fontSize" to prefs.getFloat("widget_font_size", 14f).toDouble(),
+                            "textColor" to prefs.getString("widget_text_color", "#FFFFFF"),
+                            "bgOpacity" to prefs.getFloat("widget_bg_opacity", 0.85f).toDouble(),
+                            "cornerRadius" to prefs.getFloat("widget_corner_radius", 16f).toDouble(),
+                        )
+                    )
+                }
+                "saveWidgetCustomization" -> {
+                    val fontSize = call.argument<Double>("fontSize")?.toFloat() ?: 14f
+                    val textColor = call.argument<String>("textColor") ?: "#FFFFFF"
+                    val bgOpacity = call.argument<Double>("bgOpacity")?.toFloat() ?: 0.85f
+                    val cornerRadius = call.argument<Double>("cornerRadius")?.toFloat() ?: 16f
+                    val prefs = getSharedPreferences(WidgetStyleHelper.PREFS_NAME, Context.MODE_PRIVATE)
+                    prefs.edit()
+                        .putFloat("widget_font_size", fontSize)
+                        .putString("widget_text_color", textColor)
+                        .putFloat("widget_bg_opacity", bgOpacity)
+                        .putFloat("widget_corner_radius", cornerRadius)
+                        .apply()
+                    result.success(true)
                 }
 
                 // ---------------- WEATHER WIDGET LOCATION ----------------
@@ -862,9 +1047,7 @@ class MainActivity : FlutterActivity() {
 
                 runOnUiThread {
                     try {
-                        // Unique shortcut ID with icon path hash - ensures each icon change is treated as new pin
-                        val iconHash = iconPath.hashCode().toString(16).replace("-", "n")
-                        val shortcutId = "theme_studio_${packageName}_$iconHash"
+                        val shortcutId = "theme_studio_$packageName"
                         Log.d("ThemeStudio", "createCustomIconShortcut: shortcutId=$shortcutId")
                         val shortcut = ShortcutInfo.Builder(this, shortcutId)
                             .setShortLabel(appLabel)

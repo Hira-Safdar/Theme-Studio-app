@@ -6,6 +6,7 @@ import '../widgets/pack_selector.dart';
 import '../widgets/widget_preview_card.dart' show WidgetPinStatus;
 import '../services/app_strings.dart';
 import '../services/native_bridge_service.dart';
+import '../widgets/banner_ad_widget.dart';
 import 'notes_editor_screen.dart';
 import 'weather_location_screen.dart';
 
@@ -142,7 +143,8 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
     if (!mounted) return;
     setState(() {
       _widgetFontSize = (data['fontSize'] as num?)?.toDouble() ?? 16.0;
-      _widgetTextColor = Color((data['textColor'] as num?)?.toInt() ?? Colors.white.toARGB32());
+      final hex = data['textColor'] as String?;
+      _widgetTextColor = hex != null ? Color(int.parse(hex.replaceFirst('#', '0xFF'))) : Colors.white;
       _widgetBgOpacity = (data['bgOpacity'] as num?)?.toDouble() ?? 0.85;
       _widgetCornerRadius = (data['cornerRadius'] as num?)?.toDouble() ?? 12.0;
       _customizationLoaded = true;
@@ -497,12 +499,16 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                 preview: _StyledWidgetPreview(
                   style: _style,
                   mode: _mode,
-                  builder: (textColor, secondaryColor, iconColor) => Column(
+                  fontSize: _widgetFontSize,
+                  textColor: _widgetTextColor,
+                  bgOpacity: _widgetBgOpacity,
+                  cornerRadius: _widgetCornerRadius,
+                  builder: (fs, textColor, secondaryColor, iconColor) => Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.battery_charging_full, color: iconColor, size: 22),
                       const SizedBox(height: 4),
-                      Text('78%', style: AppTypography.body.copyWith(color: textColor)),
+                      Text('78%', style: AppTypography.body.copyWith(color: textColor, fontSize: fs)),
                     ],
                   ),
                 ),
@@ -516,9 +522,13 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                 preview: _StyledWidgetPreview(
                   style: _style,
                   mode: _mode,
-                  builder: (textColor, secondaryColor, iconColor) => Text(
+                  fontSize: _widgetFontSize,
+                  textColor: _widgetTextColor,
+                  bgOpacity: _widgetBgOpacity,
+                  cornerRadius: _widgetCornerRadius,
+                  builder: (fs, textColor, secondaryColor, iconColor) => Text(
                     '${_pad(_now.hour)}:${_pad(_now.minute)}',
-                    style: AppTypography.heading.copyWith(color: textColor),
+                    style: AppTypography.heading.copyWith(color: textColor, fontSize: fs),
                   ),
                 ),
                 status: _status['clock']!,
@@ -531,16 +541,20 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                 preview: _StyledWidgetPreview(
                   style: _style,
                   mode: _mode,
-                  builder: (textColor, secondaryColor, iconColor) => FittedBox(
+                  fontSize: _widgetFontSize,
+                  textColor: _widgetTextColor,
+                  bgOpacity: _widgetBgOpacity,
+                  cornerRadius: _widgetCornerRadius,
+                  builder: (fs, textColor, secondaryColor, iconColor) => FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_weatherTemp ?? '--°', style: AppTypography.body.copyWith(color: textColor)),
+                        Text(_weatherTemp ?? '--°', style: AppTypography.body.copyWith(color: textColor, fontSize: fs)),
                         const SizedBox(height: 2),
                         Text(
                           _weatherCondition ?? 'Waiting for location…',
-                          style: AppTypography.bodySecondary.copyWith(color: secondaryColor),
+                          style: AppTypography.bodySecondary.copyWith(color: secondaryColor, fontSize: fs * 0.85),
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -564,11 +578,15 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                 preview: _StyledWidgetPreview(
                   style: _style,
                   mode: _mode,
-                  builder: (textColor, secondaryColor, iconColor) => Column(
+                  fontSize: _widgetFontSize,
+                  textColor: _widgetTextColor,
+                  bgOpacity: _widgetBgOpacity,
+                  cornerRadius: _widgetCornerRadius,
+                  builder: (fs, textColor, secondaryColor, iconColor) => Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(_dayName(_now), style: AppTypography.bodySecondary.copyWith(color: secondaryColor)),
-                      Text('${_now.day}', style: AppTypography.body.copyWith(color: textColor)),
+                      Text(_dayName(_now), style: AppTypography.bodySecondary.copyWith(color: secondaryColor, fontSize: fs * 0.85)),
+                      Text('${_now.day}', style: AppTypography.body.copyWith(color: textColor, fontSize: fs)),
                     ],
                   ),
                 ),
@@ -582,14 +600,18 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
                 preview: _StyledWidgetPreview(
                   style: _style,
                   mode: _mode,
-                  builder: (textColor, secondaryColor, iconColor) => Text(
+                  fontSize: _widgetFontSize,
+                  textColor: _widgetTextColor,
+                  bgOpacity: _widgetBgOpacity,
+                  cornerRadius: _widgetCornerRadius,
+                  builder: (fs, textColor, secondaryColor, iconColor) => Text(
                     (_noteText == null || _noteText!.trim().isEmpty)
                         ? 'Tap to add a note'
                         : _noteText!,
                     textAlign: TextAlign.center,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodySecondary.copyWith(color: secondaryColor),
+                    style: AppTypography.bodySecondary.copyWith(color: secondaryColor, fontSize: fs),
                   ),
                 ),
                 status: _status['notes']!,
@@ -602,6 +624,8 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.md),
+          const Center(child: BannerAdWidget()),
         ],
       ),
     );
@@ -789,54 +813,76 @@ class _StyledWidgetPreview extends StatelessWidget {
     required this.style,
     required this.mode,
     required this.builder,
+    this.fontSize,
+    this.textColor,
+    this.bgOpacity,
+    this.cornerRadius,
   });
 
   final String style;
   final String mode;
-  final Widget Function(Color textColor, Color secondaryColor, Color iconColor) builder;
+  final Widget Function(double fontSize, Color textColor, Color secondaryColor, Color iconColor) builder;
+  final double? fontSize;
+  final Color? textColor;
+  final double? bgOpacity;
+  final double? cornerRadius;
 
   bool get _isLight => mode == 'light';
 
-  @override
-  Widget build(BuildContext context) {
-    final textColor = _isLight ? const Color(0xFF1A1A1A) : Colors.white;
-    final secondaryColor = _isLight ? const Color(0xFF4A4A4A) : AppColors.textSecondary;
-    final iconColor =
-        _isLight ? const Color(0xFF007A72) : AppColors.accentPrimary;
-    final content = builder(textColor, secondaryColor, iconColor);
+  BorderRadius _radius() => BorderRadius.all(Radius.circular(cornerRadius ?? 12));
 
+  Color _bgBase() {
     switch (style) {
       case 'gradient':
-        return Container(
+        return Colors.transparent;
+      case 'neon':
+        return _isLight ? const Color(0xFFF4FDFC) : const Color(0xFF0A0A12);
+      default:
+        return _isLight ? const Color(0xFFF2EFEC) : AppColors.bgSurfaceRaised;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveTextColor = textColor ?? (_isLight ? const Color(0xFF1A1A1A) : Colors.white);
+    final secondaryColor = _isLight ? const Color(0xFF4A4A4A) : AppColors.textSecondary;
+    final iconColor = _isLight ? const Color(0xFF007A72) : AppColors.accentPrimary;
+    final fs = fontSize ?? 14.0;
+    final content = builder(fs, effectiveTextColor, secondaryColor, iconColor);
+
+    Widget styled;
+    switch (style) {
+      case 'gradient':
+        styled = Container(
           width: 96,
           height: 70,
           alignment: Alignment.center,
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            borderRadius: AppRadius.mdRadius,
+            borderRadius: _radius(),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: _isLight
-                  ? const [Color(0xFFB8FFF9), Color(0xFFDBD6FF)]
-                  : [AppColors.accentPrimary, const Color(0xFF8B7CFF)],
+              colors: (_isLight
+                      ? [const Color(0xFFB8FFF9), const Color(0xFFDBD6FF)]
+                      : [AppColors.accentPrimary, const Color(0xFF8B7CFF)])
+                  .map((c) => c.withValues(alpha: bgOpacity ?? 1))
+                  .toList(),
             ),
           ),
           child: content,
         );
-
       case 'neon':
-        return Container(
+        styled = Container(
           width: 96,
           height: 70,
           alignment: Alignment.center,
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: _isLight ? const Color(0xFFF4FDFC) : const Color(0xFF0A0A12),
-            borderRadius: AppRadius.mdRadius,
+            color: _bgBase().withValues(alpha: bgOpacity ?? 1),
+            borderRadius: _radius(),
             border: Border.all(
-              color: (_isLight ? const Color(0xFF00B8AE) : AppColors.accentPrimary)
-                  .withValues(alpha: 0.6),
+              color: (_isLight ? const Color(0xFF00B8AE) : AppColors.accentPrimary).withValues(alpha: 0.6),
               width: 1.5,
             ),
             boxShadow: [
@@ -849,19 +895,20 @@ class _StyledWidgetPreview extends StatelessWidget {
           ),
           child: content,
         );
-
-      default: // minimal
-        return Container(
+      default:
+        styled = Container(
           width: 96,
           height: 70,
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: _isLight ? const Color(0xFFF2EFEC) : AppColors.bgSurfaceRaised,
-            borderRadius: AppRadius.mdRadius,
+            color: _bgBase().withValues(alpha: bgOpacity ?? 1),
+            borderRadius: _radius(),
           ),
           alignment: Alignment.center,
           child: content,
         );
     }
+
+    return styled;
   }
 }
