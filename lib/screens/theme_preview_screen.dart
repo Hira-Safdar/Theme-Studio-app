@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/theme_model.dart';
 import '../services/icon_pack_service.dart';
 import '../services/theme_controller.dart';
-import '../services/ad_service.dart';
 import '../theme/app_theme.dart';
 
 const List<String> _previewIconKeys = ['browser', 'calculator', 'camera', 'clock'];
@@ -74,7 +73,6 @@ class _ThemePreviewScreenState extends State<ThemePreviewScreen> {
     );
 
     if (!mounted) return;
-    AdService.instance.showInterstitialIfReady();
     Navigator.of(context).pop(true);
   }
 

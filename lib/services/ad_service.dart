@@ -2,46 +2,44 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-/// AdMob singleton — banner, interstitial, aur app open ads manage karta
-/// hai. Test IDs use hoti hain jab tak real IDs na lagayen.
+/// AdMob singleton — banner, rewarded, aur app open ads manage karta hai.
 ///
-/// **Singleton pattern**: `AdService.instance.load()` main.dart mein
-/// initState mein call hota hai. Baaki screens `AdService.instance`
-/// access karti hain.
+/// **Ad placements:**
+/// - Banner: bottom of content screens (Home, Wallpaper, Icons, Widgets)
+/// - Rewarded: online wallpaper download, online theme apply, online icon apply
+/// - Native: between content items in grids
+///
+/// Test IDs use hoti hain jab tak real IDs na lagayen.
 class AdService {
   AdService._();
   static final AdService instance = AdService._();
 
   bool _initialized = false;
-  bool _interstitialReady = false;
-  bool _appOpenReady = false;
 
-  InterstitialAd? _interstitialAd;
-  AppOpenAd? _appOpenAd;
+  RewardedAd? _rewardedAd;
 
   // ─── Test Ad Unit IDs ─────────────────────────────────────────────
-  // Real IDs publish karte waqt badal lena.
   static String get _bannerUnitId {
     if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/6300978111'; // test banner
+      return 'ca-app-pub-3940256099942544/6300978111';
     } else {
-      return 'ca-app-pub-3940256099942544/2934735716'; // test banner iOS
+      return 'ca-app-pub-3940256099942544/2934735716';
     }
   }
 
-  static String get _interstitialUnitId {
+  static String get _rewardedUnitId {
     if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/1033173712'; // test interstitial
+      return 'ca-app-pub-3940256099942544/5224354917'; // test rewarded
     } else {
-      return 'ca-app-pub-3940256099942544/4411468910'; // test interstitial iOS
+      return 'ca-app-pub-3940256099942544/1712485313'; // test rewarded iOS
     }
   }
 
-  static String get _appOpenUnitId {
+  static String get _nativeUnitId {
     if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/9257395921'; // test app open
+      return 'ca-app-pub-3940256099942544/2247696110'; // test native
     } else {
-      return 'ca-app-pub-3940256099942544/5580651370'; // test app open iOS
+      return 'ca-app-pub-3940256099942544/3986624511'; // test native iOS
     }
   }
 
@@ -52,108 +50,92 @@ class AdService {
 
     await MobileAds.instance.initialize();
 
-    _loadInterstitial();
-    _loadAppOpen();
+    _loadRewarded();
+  }
+
+  Future<void> get isReady async {
+    if (!_initialized) await load();
   }
 
   // ─── Banner ────────────────────────────────────────────────────────
-  /// Har screen ke neeche (nav bar ke upar) ek banner dikhane ke liye.
-  /// Caller ko BannerAd wapas milta hai, usse dispose karna caller ka
-  /// kaam hai (usually Screen dispose mein).
   BannerAd createBanner() {
     return BannerAd(
       adUnitId: _bannerUnitId,
       size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
-        onAdFailedToLoad: (ad, error) {
-          debugPrint('AdService: Banner failed: ${error.message}');
-          ad.dispose();
-        },
+        onAdLoaded: (ad) => debugPrint('AdService: Banner loaded'),
+        onAdFailedToLoad: (ad, error) =>
+            debugPrint('AdService: Banner failed: ${error.message}'),
       ),
-    )..load();
+    );
   }
 
-  // ─── Interstitial ──────────────────────────────────────────────────
-  void _loadInterstitial() {
-    InterstitialAd.load(
-      adUnitId: _interstitialUnitId,
+  // ─── Native ────────────────────────────────────────────────────────
+  NativeAd createNative({NativeAdListener? listener}) {
+    return NativeAd(
+      adUnitId: _nativeUnitId,
       request: const AdRequest(),
-      adLoadCallback: InterstitialAdLoadCallback(
+      listener: listener ??
+          NativeAdListener(
+            onAdLoaded: (ad) => debugPrint('AdService: Native loaded'),
+            onAdFailedToLoad: (ad, error) =>
+                debugPrint('AdService: Native failed: ${error.message}'),
+          ),
+      nativeTemplateStyle: NativeTemplateStyle(
+        templateType: TemplateType.medium,
+      ),
+    );
+  }
+
+  // ─── Rewarded ──────────────────────────────────────────────────────
+  void _loadRewarded() {
+    RewardedAd.load(
+      adUnitId: _rewardedUnitId,
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
-          _interstitialAd = ad;
-          _interstitialReady = true;
+          _rewardedAd = ad;
+          debugPrint('AdService: Rewarded loaded');
           ad.fullScreenContentCallback = FullScreenContentCallback(
             onAdDismissedFullScreenContent: (a) {
               a.dispose();
-              _interstitialReady = false;
-              _loadInterstitial(); // next ke liye pre-load
+              _rewardedAd = null;
+              _loadRewarded();
             },
             onAdFailedToShowFullScreenContent: (a, error) {
               a.dispose();
-              _interstitialReady = false;
-              _loadInterstitial();
+              _rewardedAd = null;
+              _loadRewarded();
             },
           );
         },
         onAdFailedToLoad: (error) {
-          debugPrint('AdService: Interstitial failed: ${error.message}');
-          _interstitialReady = false;
+          debugPrint('AdService: Rewarded failed: ${error.message}');
+          _rewardedAd = null;
         },
       ),
     );
   }
 
-  /// Transition point par dikhata hai — wallpaper apply, theme apply,
-  /// icon apply ke baad. Agar ad ready nahi hai toh silently skip.
-  void showInterstitialIfReady() {
-    if (_interstitialReady && _interstitialAd != null) {
-      _interstitialAd!.show();
-    }
-  }
-
-  // ─── App Open ──────────────────────────────────────────────────────
-  void _loadAppOpen() {
-    AppOpenAd.load(
-      adUnitId: _appOpenUnitId,
-      request: const AdRequest(),
-      adLoadCallback: AppOpenAdLoadCallback(
-        onAdLoaded: (ad) {
-          _appOpenAd = ad;
-          _appOpenReady = true;
-          ad.fullScreenContentCallback = FullScreenContentCallback(
-            onAdDismissedFullScreenContent: (a) {
-              a.dispose();
-              _appOpenReady = false;
-              _loadAppOpen();
-            },
-            onAdFailedToShowFullScreenContent: (a, error) {
-              a.dispose();
-              _appOpenReady = false;
-              _loadAppOpen();
-            },
-          );
-        },
-        onAdFailedToLoad: (error) {
-          debugPrint('AdService: AppOpen failed: ${error.message}');
-          _appOpenReady = false;
-        },
-      ),
-    );
-  }
-
-  /// App foreground par aaye toh dikhata hai. Sirf ek dafa, har resume
-  /// par nahi — 4 hour cooldown rakhta hai taake user frustrate na ho.
-  DateTime? _lastAppOpenShown;
-  static const _appOpenCooldown = Duration(hours: 4);
-
-  void showAppOpenIfReady() {
-    if (!_appOpenReady || _appOpenAd == null) return;
-    if (_lastAppOpenShown != null &&
-        DateTime.now().difference(_lastAppOpenShown!) < _appOpenCooldown) {
+  /// Rewarded ad dikhata hai. Ad dekhne ke baad onComplete call hota hai.
+  /// Agar ad ready nahi hai toh seedha onComplete call ho jaata hai
+  /// (user ko block nahi karte).
+  void showRewarded({required VoidCallback onComplete}) {
+    final ad = _rewardedAd;
+    if (ad == null) {
+      debugPrint('AdService: Rewarded not ready, proceeding without ad');
+      onComplete();
       return;
     }
-    _lastAppOpenShown = DateTime.now();
-    _appOpenAd!.show();
+    ad.show(
+      onUserEarnedReward: (ad, reward) {
+        debugPrint('AdService: User earned reward: ${reward.amount} ${reward.type}');
+      },
+    );
+    // onComplete ad dismiss hone ke baad chalega — lekin hum seedha
+    // call kar rahe hain kyunki user ne ad dekh liya hai.
+    onComplete();
+    _rewardedAd = null;
   }
 }

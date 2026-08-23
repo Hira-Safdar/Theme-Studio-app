@@ -4,6 +4,7 @@ import '../services/icon_matching_service.dart';
 import '../services/icon_pack_api.dart';
 import '../theme/app_theme.dart';
 import '../widgets/banner_ad_widget.dart';
+import '../widgets/native_ad_card.dart';
 import 'icon_changer_screen.dart';
 
 const Map<String, List<Color>> _packGradients = {
@@ -244,7 +245,10 @@ class _OnlineIconPacksScreenState extends State<OnlineIconPacksScreen> {
 
                 const SizedBox(height: AppSpacing.lg),
 
-                // Online packs header
+                // ── Native Ad ──
+                const NativeAdCard(),
+
+                const SizedBox(height: AppSpacing.lg),
                 Row(
                   children: [
                     Expanded(
@@ -335,6 +339,9 @@ class _OnlineIconPacksScreenState extends State<OnlineIconPacksScreen> {
                       );
                     },
                   ),
+
+                // ── Native Ad (after online packs) ──
+                const NativeAdCard(),
               ],
             ),
           ),

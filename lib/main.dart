@@ -30,11 +30,10 @@ class ThemeStudioApp extends StatefulWidget {
   State<ThemeStudioApp> createState() => _ThemeStudioAppState();
 }
 
-class _ThemeStudioAppState extends State<ThemeStudioApp> with WidgetsBindingObserver {
+class _ThemeStudioAppState extends State<ThemeStudioApp> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     LocaleController.instance.load();
     ThemeModeController.instance.load();
     FavoritesService.instance.load();
@@ -57,15 +56,7 @@ class _ThemeStudioAppState extends State<ThemeStudioApp> with WidgetsBindingObse
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      AdService.instance.showAppOpenIfReady();
-    }
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 

@@ -97,6 +97,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
 
   final Map<String, IconRowStatus> _rowStatus = {};
   final Map<String, String> _customIconPaths = {};
+  final Set<String> _adWatchedPackages = {};
   final Map<String, Uint8List> _oldIconBytes = {};
 
   final String _autoShape = autoShapeOptions.first;
@@ -406,24 +407,24 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     }
   }
 
-  /// Selected rows ko ek-ek karke apply karta hai (sequential -- Android
-  /// ek waqt me ek hi "Add to Home Screen" confirmation dialog theek se
-  /// dikhata hai, isliye parallel requests bhejna reliable nahi hoga).
-  /// Apps jinke paas icon nahi hai wo silently skip ho jaate hain.
-  Future<void> _applyAllSelected() async {
-    final targets = _apps
-        .where((a) => _selectedPackages.contains(a.packageName) && _appHasIcon(a))
-        .toList();
-    if (targets.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No apps with available icons selected')),
-      );
-      return;
-    }
-    for (final app in targets) {
-      await _applyIcon(app);
-    }
-    if (mounted) AdService.instance.showInterstitialIfReady();
+  void _showPremiumDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        icon: const Icon(Icons.workspace_premium, size: 48),
+        title: const Text('Premium Feature'),
+        content: const Text(
+          'Apply All icons and Ad-Free experience are part of Theme Studio Premium. '
+          'Coming soon!',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickCustomIcon(AppEntry app) async {
@@ -556,7 +557,17 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
                                 onToggleSelected: (value) =>
                                     _toggleSelected(app.packageName, value),
                                 onPickCustomIcon: () => _pickCustomIcon(app),
-                                onApply: () => _applyIcon(app),
+                                onApply: _isOnlinePackTab
+                                    ? _adWatchedPackages.contains(app.packageName)
+                                        ? () => _applyIcon(app)
+                                        : () {
+                                            AdService.instance.showRewarded(onComplete: () {
+                                              setState(() => _adWatchedPackages.add(app.packageName));
+                                            });
+                                          }
+                                    : () => _applyIcon(app),
+                                isOnlinePack: _isOnlinePackTab,
+                                adWatched: _isOnlinePackTab && _adWatchedPackages.contains(app.packageName),
                               );
                             },
                           ),
@@ -566,7 +577,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
             child: SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _loadingApps ? null : _applyAllSelected,
+                onPressed: _loadingApps ? null : _showPremiumDialog,
                 icon: const Icon(Icons.done_all),
                 label: Text('Apply All (${_selectedPackages.length} selected)'),
               ),

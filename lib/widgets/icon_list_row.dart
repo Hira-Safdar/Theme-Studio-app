@@ -26,6 +26,8 @@ class IconListRow extends StatelessWidget {
     required this.onToggleSelected,
     required this.onPickCustomIcon,
     required this.onApply,
+    this.isOnlinePack = false,
+    this.adWatched = false,
   });
 
   final String label;
@@ -40,6 +42,8 @@ class IconListRow extends StatelessWidget {
   final ValueChanged<bool?> onToggleSelected;
   final VoidCallback onPickCustomIcon;
   final VoidCallback onApply;
+  final bool isOnlinePack;
+  final bool adWatched;
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +96,7 @@ class IconListRow extends StatelessWidget {
               color: AppTheme.textSecondary(context),
               onPressed: status == IconRowStatus.applying ? null : onPickCustomIcon,
             ),
-          _ApplyButton(status: status, onPressed: onApply),
+          _ApplyButton(status: status, onPressed: onApply, isOnlinePack: isOnlinePack, adWatched: adWatched),
         ],
       ),
     );
@@ -195,9 +199,11 @@ class _IconTransitionGroup extends StatelessWidget {
 }
 
 class _ApplyButton extends StatelessWidget {
-  const _ApplyButton({required this.status, required this.onPressed});
+  const _ApplyButton({required this.status, required this.onPressed, this.isOnlinePack = false, this.adWatched = false});
   final IconRowStatus status;
   final VoidCallback onPressed;
+  final bool isOnlinePack;
+  final bool adWatched;
 
   @override
   Widget build(BuildContext context) {
@@ -223,15 +229,33 @@ class _ApplyButton extends StatelessWidget {
     }
 
     final isFailed = status == IconRowStatus.failed;
-    return FilledButton(
+    final label = isFailed
+        ? 'Retry'
+        : isOnlinePack && !adWatched
+            ? 'Watch Ad'
+            : 'Apply';
+    return FilledButton.icon(
       onPressed: onPressed,
+      icon: Icon(
+        isFailed
+            ? Icons.refresh
+            : isOnlinePack && !adWatched
+                ? Icons.play_circle_outline
+                : Icons.check,
+        size: 16,
+      ),
+      label: Text(label),
       style: isFailed
           ? FilledButton.styleFrom(
               backgroundColor: AppTheme.error(context).withValues(alpha: 0.15),
               foregroundColor: AppTheme.error(context),
             )
-          : null,
-      child: Text(isFailed ? 'Retry' : 'Apply'),
+          : isOnlinePack && !adWatched
+              ? FilledButton.styleFrom(
+                  backgroundColor: AppTheme.accentPrimary(context).withValues(alpha: 0.15),
+                  foregroundColor: AppTheme.accentPrimary(context),
+                )
+              : null,
     );
   }
 }

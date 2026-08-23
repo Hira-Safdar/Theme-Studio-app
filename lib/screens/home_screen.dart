@@ -5,7 +5,9 @@ import '../services/app_strings.dart';
 import '../services/favorites_service.dart';
 import '../services/theme_controller.dart';
 import '../theme/app_theme.dart';
+import '../utils/ad_positions.dart';
 import '../widgets/banner_ad_widget.dart';
+import '../widgets/native_ad_card.dart';
 import '../widgets/preset_theme_card.dart' show PresetCardStatus;
 import 'theme_preview_screen.dart';
 import 'online_theme_apply_screen.dart';
@@ -108,6 +110,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+class _ListItem {
+  final ThemeModel? presetTheme;
+  final OnlineTheme? onlineTheme;
+  const _ListItem.preset(this.presetTheme) : onlineTheme = null;
+  const _ListItem.online(this.onlineTheme) : presetTheme = null;
+  bool get isPreset => presetTheme != null;
+  bool get isOnline => onlineTheme != null;
+}
+
 class _MixGrid extends StatelessWidget {
   const _MixGrid({
     required this.presetThemes,
@@ -141,48 +152,90 @@ class _MixGrid extends StatelessWidget {
         ),
       );
     }
+
+    // Combine all themes into one list for ad insertion
+    final allItems = <_ListItem>[];
+    for (final theme in presetThemes) {
+      allItems.add(_ListItem.preset(theme));
+    }
+    for (final theme in onlineThemes) {
+      allItems.add(_ListItem.online(theme));
+    }
+
+    // Insert native ads at random positions
+    final adPositions = randomAdPositions(allItems.length, seed: 42);
+    final adSet = adPositions.toSet();
+
+    final children = <Widget>[];
+
+    if (presetThemes.isNotEmpty) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+        child: Text(
+          'Preset Themes',
+          style: AppTypography.heading.copyWith(
+            color: AppTheme.textPrimary(context),
+          ),
+        ),
+      ));
+    }
+
+    var itemIndex = 0;
+    for (var i = 0; i < allItems.length; i++) {
+      final item = allItems[i];
+
+      // Section header when transitioning from preset to online
+      if (i > 0 &&
+          item.isOnline &&
+          !allItems[i - 1].isOnline) {
+        children.add(const SizedBox(height: AppSpacing.md));
+        children.add(Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+          child: Text(
+            'Online Themes',
+            style: AppTypography.heading.copyWith(
+              color: AppTheme.textPrimary(context),
+            ),
+          ),
+        ));
+      }
+
+      if (item.isPreset) {
+        children.add(_PresetMixCard(
+          theme: item.presetTheme!,
+          status: statusFor(item.presetTheme!),
+          onTap: onPresetTap != null ? () => onPresetTap!(item.presetTheme!) : null,
+          isFavorite: isFavorite(item.presetTheme!.id),
+          onToggleFavorite: () => onToggleFavorite(item.presetTheme!.id),
+        ));
+      } else {
+        children.add(_OnlineMixCard(
+          theme: item.onlineTheme!,
+          onTap: onOnlineTap != null ? () => onOnlineTap!(item.onlineTheme!) : null,
+          isFavorite: isFavorite(item.onlineTheme!.id),
+          onToggleFavorite: () => onToggleFavorite(item.onlineTheme!.id),
+        ));
+      }
+
+      // Insert native ad after this item if it's aad position
+      if (adSet.contains(itemIndex)) {
+        children.add(const Padding(
+          padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+          child: SizedBox(
+            height: 120,
+            child: NativeAdCard(),
+          ),
+        ));
+      }
+      itemIndex++;
+    }
+
+    children.add(const SizedBox(height: AppSpacing.md));
+    children.add(const Center(child: BannerAdWidget()));
+
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
-      children: [
-        if (presetThemes.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Text(
-              'Preset Themes',
-              style: AppTypography.heading.copyWith(
-                color: AppTheme.textPrimary(context),
-              ),
-            ),
-          ),
-          ...presetThemes.map((theme) => _PresetMixCard(
-            theme: theme,
-            status: statusFor(theme),
-            onTap: onPresetTap != null ? () => onPresetTap!(theme) : null,
-            isFavorite: isFavorite(theme.id),
-            onToggleFavorite: () => onToggleFavorite(theme.id),
-          )),
-          const SizedBox(height: AppSpacing.md),
-        ],
-        if (onlineThemes.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Text(
-              'Online Themes',
-              style: AppTypography.heading.copyWith(
-                color: AppTheme.textPrimary(context),
-              ),
-            ),
-          ),
-          ...onlineThemes.map((theme) => _OnlineMixCard(
-            theme: theme,
-            onTap: onOnlineTap != null ? () => onOnlineTap!(theme) : null,
-            isFavorite: isFavorite(theme.id),
-            onToggleFavorite: () => onToggleFavorite(theme.id),
-          )),
-        ],
-        const SizedBox(height: AppSpacing.md),
-        const Center(child: BannerAdWidget()),
-      ],
+      children: children,
     );
   }
 }

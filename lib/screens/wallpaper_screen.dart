@@ -9,8 +9,10 @@ import '../services/native_bridge_service.dart';
 import '../services/icon_pack_service.dart';
 import '../services/ad_service.dart';
 import '../services/wallpaper_favorites_service.dart';
+import '../utils/ad_positions.dart';
 import '../theme/app_theme.dart';
 import '../widgets/banner_ad_widget.dart';
+import '../widgets/native_ad_card.dart';
 import '../widgets/wallpaper_preview.dart';
 
 const List<String> _categories = ['nature', 'abstract', 'dark', 'minimal'];
@@ -127,7 +129,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
 
   void _showResult(bool ok) {
     if (!mounted) return;
-    if (ok) AdService.instance.showInterstitialIfReady();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(ok ? tr('wallpaper_applied') : tr('wallpaper_failed'))),
     );
@@ -146,12 +147,15 @@ class _WallpaperScreenState extends State<WallpaperScreen>
       _showResult(false);
       return;
     }
-    try {
-      final ok = await NativeBridgeService.instance.setWallpaper(localPath, target: target);
-      _showResult(ok);
-    } catch (_) {
-      _showResult(false);
-    }
+
+    AdService.instance.showRewarded(onComplete: () async {
+      try {
+        final ok = await NativeBridgeService.instance.setWallpaper(localPath, target: target);
+        _showResult(ok);
+      } catch (_) {
+        _showResult(false);
+      }
+    });
   }
 
   @override
@@ -259,6 +263,12 @@ class _AssetWallpaperGrid extends StatelessWidget {
       );
     }
 
+    // Generate random ad positions
+    final adPosSet = randomAdPositions(displayed.length, seed: displayed.length).toSet();
+
+    // Map grid index -> content index (offset by how many ads appeared before)
+    final totalSlots = displayed.length + adPosSet.length;
+
     return GridView.builder(
       padding: const EdgeInsets.all(AppSpacing.md),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -267,9 +277,30 @@ class _AssetWallpaperGrid extends StatelessWidget {
         mainAxisSpacing: AppSpacing.md,
         childAspectRatio: 2 / 3,
       ),
-      itemCount: displayed.length,
-      itemBuilder: (context, i) {
-        final path = displayed[i];
+      itemCount: totalSlots,
+      itemBuilder: (context, gridIndex) {
+        // Count how many ad slots are at or before this grid index
+        var adsBefore = 0;
+        for (final ap in adPosSet) {
+          final slotIndex = ap + adsBefore;
+          if (slotIndex <= gridIndex) {
+            adsBefore++;
+          } else {
+            break;
+          }
+        }
+        final contentIndex = gridIndex - adsBefore;
+
+        // This slot is an ad
+        if (adPosSet.any((ap) => ap + _adsBeforeCount(ap, adPosSet) == gridIndex)) {
+          return const NativeAdCard();
+        }
+
+        // Normal wallpaper item
+        if (contentIndex < 0 || contentIndex >= displayed.length) {
+          return const SizedBox.shrink();
+        }
+        final path = displayed[contentIndex];
         final id = 'asset_${path.hashCode}';
         final isFav = WallpaperFavoritesService.instance.isFavorite(id);
         return GestureDetector(
@@ -306,6 +337,14 @@ class _AssetWallpaperGrid extends StatelessWidget {
       },
     );
   }
+
+  int _adsBeforeCount(int adPos, Set<int> allAdPositions) {
+    var count = 0;
+    for (final ap in allAdPositions) {
+      if (ap < adPos) count++;
+    }
+    return count;
+  }
 }
 
 class _MyWallpapersGrid extends StatelessWidget {
@@ -341,6 +380,9 @@ class _MyWallpapersGrid extends StatelessWidget {
         ),
       );
     }
+    final adPosSet = randomAdPositions(paths.length, seed: 77).toSet();
+    final totalSlots = paths.length + adPosSet.length;
+
     return GridView.builder(
       padding: const EdgeInsets.all(AppSpacing.md),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -349,9 +391,24 @@ class _MyWallpapersGrid extends StatelessWidget {
         mainAxisSpacing: AppSpacing.md,
         childAspectRatio: 2 / 3,
       ),
-      itemCount: paths.length,
-      itemBuilder: (context, i) {
-        final path = paths[i];
+      itemCount: totalSlots,
+      itemBuilder: (context, gridIndex) {
+        var adsBefore = 0;
+        for (final ap in adPosSet) {
+          if (ap + _adsBeforeCount(ap, adPosSet) <= gridIndex) {
+            adsBefore++;
+          } else {
+            break;
+          }
+        }
+        if (adPosSet.any((ap) => ap + _adsBeforeCount(ap, adPosSet) == gridIndex)) {
+          return const NativeAdCard();
+        }
+        final contentIndex = gridIndex - adsBefore;
+        if (contentIndex < 0 || contentIndex >= paths.length) {
+          return const SizedBox.shrink();
+        }
+        final path = paths[contentIndex];
         return GestureDetector(
           onTap: () => onApply(path),
           child: ClipRRect(
@@ -381,6 +438,14 @@ class _MyWallpapersGrid extends StatelessWidget {
         );
       },
     );
+  }
+
+  int _adsBeforeCount(int adPos, Set<int> allAdPositions) {
+    var count = 0;
+    for (final ap in allAdPositions) {
+      if (ap < adPos) count++;
+    }
+    return count;
   }
 }
 
@@ -480,6 +545,8 @@ class _OnlineWallpaperGridState extends State<_OnlineWallpaperGrid> {
                   : ListenableBuilder(
                       listenable: WallpaperFavoritesService.instance,
                       builder: (context, _) {
+                        final adPosSet = randomAdPositions(_wallpapers.length, seed: 99).toSet();
+                        final totalSlots = _wallpapers.length + adPosSet.length;
                         return GridView.builder(
                           padding: const EdgeInsets.all(AppSpacing.md),
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -488,9 +555,24 @@ class _OnlineWallpaperGridState extends State<_OnlineWallpaperGrid> {
                             mainAxisSpacing: AppSpacing.md,
                             childAspectRatio: 2 / 3,
                           ),
-                          itemCount: _wallpapers.length,
-                          itemBuilder: (context, i) {
-                            final wallpaper = _wallpapers[i];
+                          itemCount: totalSlots,
+                          itemBuilder: (context, gridIndex) {
+                            var adsBefore = 0;
+                            for (final ap in adPosSet) {
+                              if (ap + _adsBeforeCount(ap, adPosSet) <= gridIndex) {
+                                adsBefore++;
+                              } else {
+                                break;
+                              }
+                            }
+                            if (adPosSet.any((ap) => ap + _adsBeforeCount(ap, adPosSet) == gridIndex)) {
+                              return const NativeAdCard();
+                            }
+                            final contentIndex = gridIndex - adsBefore;
+                            if (contentIndex < 0 || contentIndex >= _wallpapers.length) {
+                              return const SizedBox.shrink();
+                            }
+                            final wallpaper = _wallpapers[contentIndex];
                             final isFav = WallpaperFavoritesService.instance.isFavorite(wallpaper.id);
                             return GestureDetector(
                               onTap: () => widget.onApply(wallpaper),
@@ -558,5 +640,13 @@ class _OnlineWallpaperGridState extends State<_OnlineWallpaperGrid> {
         ),
       ],
     );
+  }
+
+  int _adsBeforeCount(int adPos, Set<int> allAdPositions) {
+    var count = 0;
+    for (final ap in allAdPositions) {
+      if (ap < adPos) count++;
+    }
+    return count;
   }
 }

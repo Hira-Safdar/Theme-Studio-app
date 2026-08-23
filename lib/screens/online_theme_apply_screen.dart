@@ -121,7 +121,9 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
         );
         return;
       }
-      await _applyFromLocal(target, localPath);
+      AdService.instance.showRewarded(onComplete: () async {
+        await _applyFromLocal(target, localPath);
+      });
     } catch (_) {}
   }
 
@@ -241,7 +243,6 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
       );
 
       if (!mounted) return;
-      AdService.instance.showInterstitialIfReady();
       Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _applying = false);
