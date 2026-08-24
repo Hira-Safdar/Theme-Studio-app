@@ -148,7 +148,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
       return;
     }
 
-    AdService.instance.showRewarded(onComplete: () async {
+    AdService.instance.showRewarded(placement: 'wallpaper_apply', onComplete: () async {
       try {
         final ok = await NativeBridgeService.instance.setWallpaper(localPath, target: target);
         _showResult(ok);
@@ -215,7 +215,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                         ],
                       ),
               ),
-              const Center(child: BannerAdWidget()),
+              const Center(child: BannerAdWidget(placement: 'wallpaper')),
             ],
           ),
         );
@@ -293,7 +293,7 @@ class _AssetWallpaperGrid extends StatelessWidget {
 
         // This slot is an ad
         if (adPosSet.any((ap) => ap + _adsBeforeCount(ap, adPosSet) == gridIndex)) {
-          return const NativeAdCard();
+          return const NativeAdCard(placement: 'wallpaper_categories');
         }
 
         // Normal wallpaper item
@@ -402,7 +402,7 @@ class _MyWallpapersGrid extends StatelessWidget {
           }
         }
         if (adPosSet.any((ap) => ap + _adsBeforeCount(ap, adPosSet) == gridIndex)) {
-          return const NativeAdCard();
+          return const NativeAdCard(placement: 'wallpaper_my');
         }
         final contentIndex = gridIndex - adsBefore;
         if (contentIndex < 0 || contentIndex >= paths.length) {
@@ -566,7 +566,7 @@ class _OnlineWallpaperGridState extends State<_OnlineWallpaperGrid> {
                               }
                             }
                             if (adPosSet.any((ap) => ap + _adsBeforeCount(ap, adPosSet) == gridIndex)) {
-                              return const NativeAdCard();
+                              return const NativeAdCard(placement: 'wallpaper_online');
                             }
                             final contentIndex = gridIndex - adsBefore;
                             if (contentIndex < 0 || contentIndex >= _wallpapers.length) {

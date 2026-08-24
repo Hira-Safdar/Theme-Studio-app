@@ -1,24 +1,45 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'ads_analytics_service.dart';
 
-/// AdMob singleton — banner, rewarded, aur app open ads manage karta hai.
+/// AdMob singleton — pool-based cache for instant ad display.
 ///
-/// **Ad placements:**
-/// - Banner: bottom of content screens (Home, Wallpaper, Icons, Widgets)
-/// - Rewarded: online wallpaper download, online theme apply, online icon apply
-/// - Native: between content items in grids
-///
-/// Test IDs use hoti hain jab tak real IDs na lagayen.
+/// **Preload strategy:**
+/// - Splash pe: SDK init + 4 banner + 8 native + 1 rewarded parallel load
+/// - Har slot ke liye ek cached ad ready — zero wait on screen open
+/// - Consume hotay hi next ad automatically refill hota hai
+/// - App resume pe pools refresh hote hain
 class AdService {
   AdService._();
   static final AdService instance = AdService._();
 
   bool _initialized = false;
 
-  RewardedAd? _rewardedAd;
+  // ─── Pool sizes ───────────────────────────────────────────────────
+  static const int _bannerPoolSize = 4;
+  static const int _nativePoolSize = 8;
 
-  // ─── Test Ad Unit IDs ─────────────────────────────────────────────
+  // ─── Pools ────────────────────────────────────────────────────────
+  final List<BannerAd> _bannerPool = [];
+  final List<NativeAd> _nativePool = [];
+  RewardedAd? _rewardedAd;
+  bool _rewardedLoading = false;
+
+  // ─── Loading states ──────────────────────────────────────────────
+  final Set<int> _bannerLoading = {};
+  final Set<int> _nativeLoading = {};
+
+  // ─── Retry backoff ────────────────────────────────────────────────
+  int _bannerRetryDelay = 3;
+  int _nativeRetryDelay = 3;
+  static const int _maxRetryDelay = 30;
+
+  // ─── Test Ad Unit IDs (public for fallback) ──────────────────────
+  static String get testBannerUnitId => _bannerUnitId;
+  static String get testNativeUnitId => _nativeUnitId;
+
   static String get _bannerUnitId {
     if (Platform.isAndroid) {
       return 'ca-app-pub-3940256099942544/6300978111';
@@ -29,17 +50,17 @@ class AdService {
 
   static String get _rewardedUnitId {
     if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/5224354917'; // test rewarded
+      return 'ca-app-pub-3940256099942544/5224354917';
     } else {
-      return 'ca-app-pub-3940256099942544/1712485313'; // test rewarded iOS
+      return 'ca-app-pub-3940256099942544/1712485313';
     }
   }
 
   static String get _nativeUnitId {
     if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/2247696110'; // test native
+      return 'ca-app-pub-3940256099942544/2247696110';
     } else {
-      return 'ca-app-pub-3940256099942544/3986624511'; // test native iOS
+      return 'ca-app-pub-3940256099942544/3986624511';
     }
   }
 
@@ -50,6 +71,13 @@ class AdService {
 
     await MobileAds.instance.initialize();
 
+    // Parallel mein sab preload karo — 4 banner + 8 native + 1 rewarded
+    for (int i = 0; i < _bannerPoolSize; i++) {
+      _preloadBannerSlot(i);
+    }
+    for (int i = 0; i < _nativePoolSize; i++) {
+      _preloadNativeSlot(i);
+    }
     _loadRewarded();
   }
 
@@ -57,30 +85,116 @@ class AdService {
     if (!_initialized) await load();
   }
 
-  // ─── Banner ────────────────────────────────────────────────────────
-  BannerAd createBanner() {
+  /// App resume pe pools ko refresh karo — stale ads hatao, naye load karo
+  void refreshPools() {
+    debugPrint('AdService: Refreshing pools on resume');
+    // Purane stale ads dispose karo
+    for (final ad in _bannerPool) {
+      ad.dispose();
+    }
+    _bannerPool.clear();
+    for (final ad in _nativePool) {
+      ad.dispose();
+    }
+    _nativePool.clear();
+
+    // Naye preload karo
+    _bannerRetryDelay = 3;
+    _nativeRetryDelay = 3;
+    for (int i = 0; i < _bannerPoolSize; i++) {
+      _preloadBannerSlot(i);
+    }
+    for (int i = 0; i < _nativePoolSize; i++) {
+      _preloadNativeSlot(i);
+    }
+    _loadRewarded();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // BANNER — pool of 4, auto-refill on consume
+  // ═══════════════════════════════════════════════════════════════════
+  BannerAd createBanner({required String placement}) {
     return BannerAd(
       adUnitId: _bannerUnitId,
       size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
-        onAdLoaded: (ad) => debugPrint('AdService: Banner loaded'),
-        onAdFailedToLoad: (ad, error) =>
-            debugPrint('AdService: Banner failed: ${error.message}'),
+        onAdLoaded: (ad) {
+          debugPrint('AdService: Banner loaded [$placement]');
+          AdsAnalyticsService.instance.logImpression(adType: 'banner', placement: placement);
+        },
+        onAdClicked: (ad) {
+          AdsAnalyticsService.instance.logClick(adType: 'banner', placement: placement);
+        },
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('AdService: Banner failed: ${error.message}');
+          ad.dispose();
+        },
       ),
     );
   }
 
-  // ─── Native ────────────────────────────────────────────────────────
-  NativeAd createNative({NativeAdListener? listener}) {
+  void _preloadBannerSlot(int index) {
+    if (_bannerLoading.contains(index)) return;
+    _bannerLoading.add(index);
+
+    BannerAd(
+      adUnitId: _bannerUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          _bannerPool.add(ad as BannerAd);
+          _bannerLoading.remove(index);
+          _bannerRetryDelay = 3;
+          debugPrint('AdService: Banner pool[$index] ready (${_bannerPool.length}/$_bannerPoolSize)');
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          _bannerLoading.remove(index);
+          debugPrint('AdService: Banner pool[$index] failed: ${error.message}');
+          final delay = Duration(seconds: _bannerRetryDelay);
+          _bannerRetryDelay = (_bannerRetryDelay * 2).clamp(0, _maxRetryDelay);
+          Future.delayed(delay, () => _preloadBannerSlot(index));
+        },
+      ),
+    ).load();
+  }
+
+  /// Pool se banner lo. Auto-refill hota hai consume ke baad.
+  BannerAd? takeBanner({required String placement}) {
+    if (_bannerPool.isNotEmpty) {
+      final ad = _bannerPool.removeAt(0);
+      debugPrint('AdService: Banner served from pool [$placement] (${_bannerPool.length} remaining)');
+      AdsAnalyticsService.instance.logImpression(adType: 'banner', placement: placement);
+      return ad;
+    }
+    debugPrint('AdService: Banner pool empty [$placement]');
+    return null;
+  }
+
+  int get bannerPoolSize => _bannerPool.length;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // NATIVE — pool of 8, auto-refill on consume
+  // ═══════════════════════════════════════════════════════════════════
+  NativeAd createNative({required String placement, NativeAdListener? listener}) {
     return NativeAd(
       adUnitId: _nativeUnitId,
       request: const AdRequest(),
       listener: listener ??
           NativeAdListener(
-            onAdLoaded: (ad) => debugPrint('AdService: Native loaded'),
-            onAdFailedToLoad: (ad, error) =>
-                debugPrint('AdService: Native failed: ${error.message}'),
+            onAdLoaded: (ad) {
+              debugPrint('AdService: Native loaded [$placement]');
+              AdsAnalyticsService.instance.logImpression(adType: 'native', placement: placement);
+            },
+            onAdClicked: (ad) {
+              AdsAnalyticsService.instance.logClick(adType: 'native', placement: placement);
+            },
+            onAdFailedToLoad: (ad, error) {
+              debugPrint('AdService: Native failed: ${error.message}');
+              ad.dispose();
+            },
           ),
       nativeTemplateStyle: NativeTemplateStyle(
         templateType: TemplateType.medium,
@@ -88,15 +202,63 @@ class AdService {
     );
   }
 
-  // ─── Rewarded ──────────────────────────────────────────────────────
+  void _preloadNativeSlot(int index) {
+    if (_nativeLoading.contains(index)) return;
+    _nativeLoading.add(index);
+
+    NativeAd(
+      adUnitId: _nativeUnitId,
+      request: const AdRequest(),
+      listener: NativeAdListener(
+        onAdLoaded: (ad) {
+          _nativePool.add(ad as NativeAd);
+          _nativeLoading.remove(index);
+          _nativeRetryDelay = 3;
+          debugPrint('AdService: Native pool[$index] ready (${_nativePool.length}/$_nativePoolSize)');
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          _nativeLoading.remove(index);
+          debugPrint('AdService: Native pool[$index] failed: ${error.message}');
+          final delay = Duration(seconds: _nativeRetryDelay);
+          _nativeRetryDelay = (_nativeRetryDelay * 2).clamp(0, _maxRetryDelay);
+          Future.delayed(delay, () => _preloadNativeSlot(index));
+        },
+      ),
+      nativeTemplateStyle: NativeTemplateStyle(
+        templateType: TemplateType.medium,
+      ),
+    ).load();
+  }
+
+  /// Pool se native lo. Auto-refill hota hai consume ke baad.
+  NativeAd? takeNative({required String placement}) {
+    if (_nativePool.isNotEmpty) {
+      final ad = _nativePool.removeAt(0);
+      debugPrint('AdService: Native served from pool [$placement] (${_nativePool.length} remaining)');
+      AdsAnalyticsService.instance.logImpression(adType: 'native', placement: placement);
+      return ad;
+    }
+    debugPrint('AdService: Native pool empty [$placement]');
+    return null;
+  }
+
+  int get nativePoolSize => _nativePool.length;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // REWARDED — always preloaded (single)
+  // ═══════════════════════════════════════════════════════════════════
   void _loadRewarded() {
+    if (_rewardedLoading || _rewardedAd != null) return;
+    _rewardedLoading = true;
     RewardedAd.load(
       adUnitId: _rewardedUnitId,
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
+          _rewardedLoading = false;
           _rewardedAd = ad;
-          debugPrint('AdService: Rewarded loaded');
+          debugPrint('AdService: Rewarded preloaded');
           ad.fullScreenContentCallback = FullScreenContentCallback(
             onAdDismissedFullScreenContent: (a) {
               a.dispose();
@@ -111,31 +273,55 @@ class AdService {
           );
         },
         onAdFailedToLoad: (error) {
+          _rewardedLoading = false;
           debugPrint('AdService: Rewarded failed: ${error.message}');
           _rewardedAd = null;
+          Future.delayed(const Duration(seconds: 3), _loadRewarded);
         },
       ),
     );
   }
 
-  /// Rewarded ad dikhata hai. Ad dekhne ke baad onComplete call hota hai.
-  /// Agar ad ready nahi hai toh seedha onComplete call ho jaata hai
-  /// (user ko block nahi karte).
-  void showRewarded({required VoidCallback onComplete}) {
+  void ensureRewardedReady() {
+    if (_rewardedAd == null && !_rewardedLoading) {
+      debugPrint('AdService: Pre-loading rewarded ad');
+      _loadRewarded();
+    }
+  }
+
+  /// Rewarded ad dikhata hai. onComplete tab hota hai jab user ad dekh
+  /// kar dismiss kare (ya reward mile), ad se pehle nahi.
+  void showRewarded({required String placement, required VoidCallback onComplete}) {
     final ad = _rewardedAd;
     if (ad == null) {
       debugPrint('AdService: Rewarded not ready, proceeding without ad');
       onComplete();
       return;
     }
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdShowedFullScreenContent: (a) {
+        debugPrint('AdService: Rewarded showed [$placement]');
+        AdsAnalyticsService.instance.logImpression(adType: 'rewarded', placement: placement);
+      },
+      onAdDismissedFullScreenContent: (a) {
+        a.dispose();
+        _rewardedAd = null;
+        _loadRewarded();
+      },
+      onAdFailedToShowFullScreenContent: (a, error) {
+        debugPrint('AdService: Rewarded show failed: ${error.message}');
+        a.dispose();
+        _rewardedAd = null;
+        _loadRewarded();
+      },
+    );
     ad.show(
       onUserEarnedReward: (ad, reward) {
         debugPrint('AdService: User earned reward: ${reward.amount} ${reward.type}');
+        AdsAnalyticsService.instance.logRewardedCompleted(placement: placement);
+        onComplete();
       },
     );
-    // onComplete ad dismiss hone ke baad chalega — lekin hum seedha
-    // call kar rahe hain kyunki user ne ad dekh liya hai.
-    onComplete();
     _rewardedAd = null;
   }
 }

@@ -561,7 +561,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
                                     ? _adWatchedPackages.contains(app.packageName)
                                         ? () => _applyIcon(app)
                                         : () {
-                                            AdService.instance.showRewarded(onComplete: () {
+                                            AdService.instance.showRewarded(placement: 'online_icon_apply', onComplete: () {
                                               setState(() => _adWatchedPackages.add(app.packageName));
                                             });
                                           }

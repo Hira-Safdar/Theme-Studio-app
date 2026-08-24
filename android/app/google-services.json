@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "633421777758",
+    "project_id": "theme-studio-ad69e",
+    "storage_bucket": "theme-studio-ad69e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:633421777758:android:66bb63526c0a77b8d89dcf",
+        "android_client_info": {
+          "package_name": "com.example.theme_studio"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCAK6TxPjMldDi13rkLGTeJ1bAXyYuMcgc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

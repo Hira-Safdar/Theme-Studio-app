@@ -14,6 +14,8 @@ import '../services/native_bridge_service.dart';
 import '../services/theme_controller.dart';
 import '../services/ad_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/ad_positions.dart';
+import '../widgets/native_ad_card.dart';
 import '../widgets/wallpaper_preview.dart';
 
 class _PackOption {
@@ -121,7 +123,7 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
         );
         return;
       }
-      AdService.instance.showRewarded(onComplete: () async {
+      AdService.instance.showRewarded(placement: 'online_theme_apply', onComplete: () async {
         await _applyFromLocal(target, localPath);
       });
     } catch (_) {}
@@ -319,62 +321,91 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
           ),
         ),
         Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: AppSpacing.md,
-              mainAxisSpacing: AppSpacing.md,
-              childAspectRatio: 2 / 3,
-            ),
-            itemCount: _wallpapers.length,
-            itemBuilder: (context, i) {
-              final wallpaper = _wallpapers[i];
-              return GestureDetector(
-                onTap: () => _selectWallpaper(wallpaper),
-                child: ClipRRect(
-                  borderRadius: AppRadius.mdRadius,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.network(
-                        wallpaper.thumbnailUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: AppTheme.surfaceRaised(context),
-                          child: Icon(Icons.broken_image, color: AppTheme.textSecondary(context)),
-                        ),
-                      ),
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
+          child: Builder(
+            builder: (context) {
+              final adPosSet = randomAdPositions(_wallpapers.length, seed: 55).toSet();
+              final totalSlots = _wallpapers.length + adPosSet.length;
+              return GridView.builder(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: AppSpacing.md,
+                  mainAxisSpacing: AppSpacing.md,
+                  childAspectRatio: 2 / 3,
+                ),
+                itemCount: totalSlots,
+                itemBuilder: (context, gridIndex) {
+                  var adsBefore = 0;
+                  for (final ap in adPosSet) {
+                    if (ap + _adsBeforeCount(ap, adPosSet) <= gridIndex) {
+                      adsBefore++;
+                    } else {
+                      break;
+                    }
+                  }
+                  if (adPosSet.any((ap) => ap + _adsBeforeCount(ap, adPosSet) == gridIndex)) {
+                    return const NativeAdCard(placement: 'online_theme');
+                  }
+                  final contentIndex = gridIndex - adsBefore;
+                  if (contentIndex < 0 || contentIndex >= _wallpapers.length) {
+                    return const SizedBox.shrink();
+                  }
+                  final wallpaper = _wallpapers[contentIndex];
+                  return GestureDetector(
+                    onTap: () => _selectWallpaper(wallpaper),
+                    child: ClipRRect(
+                      borderRadius: AppRadius.mdRadius,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            wallpaper.thumbnailUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: AppTheme.surfaceRaised(context),
+                              child: Icon(Icons.broken_image, color: AppTheme.textSecondary(context)),
                             ),
                           ),
-                          child: Text(
-                            wallpaper.author,
-                            style: AppTypography.bodySecondary.copyWith(color: Colors.white, fontSize: 10),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
+                                ),
+                              ),
+                              child: Text(
+                                wallpaper.author,
+                                style: AppTypography.bodySecondary.copyWith(color: Colors.white, fontSize: 10),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               );
             },
           ),
         ),
       ],
     );
+  }
+
+  int _adsBeforeCount(int adPos, Set<int> allAdPositions) {
+    var count = 0;
+    for (final ap in allAdPositions) {
+      if (ap < adPos) count++;
+    }
+    return count;
   }
 
   Widget _buildPreviewView() {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'screens/home_screen.dart';
 import 'screens/wallpaper_screen.dart';
 import 'screens/online_icon_packs_screen.dart';
@@ -17,7 +18,9 @@ import 'services/ad_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const ThemeStudioApp());
 }
 
@@ -30,10 +33,11 @@ class ThemeStudioApp extends StatefulWidget {
   State<ThemeStudioApp> createState() => _ThemeStudioAppState();
 }
 
-class _ThemeStudioAppState extends State<ThemeStudioApp> {
+class _ThemeStudioAppState extends State<ThemeStudioApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     LocaleController.instance.load();
     ThemeModeController.instance.load();
     FavoritesService.instance.load();
@@ -56,7 +60,16 @@ class _ThemeStudioAppState extends State<ThemeStudioApp> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      AdService.instance.refreshPools();
+      AdService.instance.ensureRewardedReady();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 

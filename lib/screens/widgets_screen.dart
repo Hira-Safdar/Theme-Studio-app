@@ -305,9 +305,12 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(tr('widgets_title'))),
-      body: ListView(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      body: Column(
         children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(AppSpacing.screenPadding),
+              children: [
           const Text(
             'Android will confirm before adding a widget.',
             style: AppTypography.bodySecondary,
@@ -624,9 +627,11 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          const Center(child: BannerAdWidget()),
         ],
+      ),
+      ),
+          const Center(child: BannerAdWidget(placement: 'widgets')),
+    ],
       ),
     );
   }

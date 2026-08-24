@@ -16,7 +16,10 @@ dependencies:
   shared_preferences: ^2.2.3  # applied theme / icon pack state save karne ke liye
   url_launcher: ^6.3.1
   http: ^1.2.0                # online wallpapers download karne ke liye
-  google_mobile_ads: ^9.1.0    # ads (banner, interstitial, app open)
+  google_mobile_ads: ^9.1.0    # ads (banner, interstitial, app o
+  firebase_core: ^3.13.0
+  cloud_firestore: ^5.6.5
+
 
 dev_dependencies:
   flutter_test:

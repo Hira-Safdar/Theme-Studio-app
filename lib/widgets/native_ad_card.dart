@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/ad_service.dart';
+import '../services/ads_analytics_service.dart';
 import '../theme/app_theme.dart';
 
 /// Native ad jo content cards jaisa dikhta hai — "Sponsored" badge ke
-/// saath. HomeScreen aur WallpaperScreen category grids mein use hota hai.
-///
-/// `aspectRatio` param se surrounding cards ke saath match karwa sakte
-/// ho (e.g. 2/3 for wallpaper grid, wider for full-width list cards).
+/// saath. Pool se instant ad milta hai, nahi toh fresh load hota hai.
 class NativeAdCard extends StatefulWidget {
-  const NativeAdCard({super.key, this.aspectRatio = 2 / 3});
+  const NativeAdCard({super.key, this.aspectRatio = 2 / 3, required this.placement});
 
   final double aspectRatio;
+  final String placement;
 
   @override
   State<NativeAdCard> createState() => _NativeAdCardState();
@@ -27,18 +26,41 @@ class _NativeAdCardState extends State<NativeAdCard> {
     _loadAd();
   }
 
-  Future<void> _loadAd() async {
+  void _loadAd() async {
     await AdService.instance.isReady;
     if (!mounted) return;
-    _ad = AdService.instance.createNative(
+
+    // Try pool first — zero wait
+    _ad = AdService.instance.takeNative(placement: widget.placement);
+    if (_ad != null && mounted) {
+      setState(() => _loaded = true);
+      return;
+    }
+
+    // Fallback — fresh load with combined listener
+    _ad = NativeAd(
+      adUnitId: AdService.testNativeUnitId,
+      request: const AdRequest(),
       listener: NativeAdListener(
         onAdLoaded: (ad) {
-          if (mounted) setState(() => _loaded = true);
+          if (mounted) {
+            setState(() => _loaded = true);
+            AdsAnalyticsService.instance.logImpression(adType: 'native', placement: widget.placement);
+          } else {
+            ad.dispose();
+          }
+        },
+        onAdClicked: (ad) {
+          AdsAnalyticsService.instance.logClick(adType: 'native', placement: widget.placement);
         },
         onAdFailedToLoad: (ad, error) {
           debugPrint('NativeAdCard: failed: ${error.message}');
           ad.dispose();
+          if (mounted) setState(() => _ad = null);
         },
+      ),
+      nativeTemplateStyle: NativeTemplateStyle(
+        templateType: TemplateType.medium,
       ),
     );
     _ad!.load();
@@ -54,7 +76,23 @@ class _NativeAdCardState extends State<NativeAdCard> {
   @override
   Widget build(BuildContext context) {
     if (!_loaded || _ad == null) {
-      return const SizedBox.shrink();
+      return Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: AppRadius.mdRadius,
+        ),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
     }
     return ClipRRect(
       borderRadius: AppRadius.mdRadius,

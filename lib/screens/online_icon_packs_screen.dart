@@ -219,8 +219,11 @@ class _OnlineIconPacksScreenState extends State<OnlineIconPacksScreen> {
                     mainAxisSpacing: AppSpacing.md,
                     childAspectRatio: 2 / 3,
                   ),
-                  itemCount: bundledPacks.length,
+                  itemCount: bundledPacks.length + 1,
                   itemBuilder: (context, i) {
+                    if (i >= bundledPacks.length) {
+                      return const NativeAdCard(placement: 'icons_bundled');
+                    }
                     final packId = bundledPacks[i];
                     final previewAssets = _bundledPreviewKeys
                         .map((key) => 'assets/icon_packs/$packId/$key.png')
@@ -246,7 +249,7 @@ class _OnlineIconPacksScreenState extends State<OnlineIconPacksScreen> {
                 const SizedBox(height: AppSpacing.lg),
 
                 // ── Native Ad ──
-                const NativeAdCard(),
+                const NativeAdCard(placement: 'icons_section'),
 
                 const SizedBox(height: AppSpacing.lg),
                 Row(
@@ -341,13 +344,13 @@ class _OnlineIconPacksScreenState extends State<OnlineIconPacksScreen> {
                   ),
 
                 // ── Native Ad (after online packs) ──
-                const NativeAdCard(),
+                const NativeAdCard(placement: 'icons_online'),
               ],
             ),
           ),
 
           // ── Banner Ad ──
-          const Center(child: BannerAdWidget()),
+          const Center(child: BannerAdWidget(placement: 'icons')),
         ],
       ),
     );

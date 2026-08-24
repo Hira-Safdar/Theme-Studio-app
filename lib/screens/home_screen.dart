@@ -97,14 +97,21 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: _MixGrid(
-        presetThemes: preset,
-        onlineThemes: online,
-        statusFor: _statusFor,
-        onPresetTap: controller.isApplying ? null : _handlePresetTap,
-        onOnlineTap: controller.isApplying ? null : _handleOnlineTap,
-        onToggleFavorite: (id) => FavoritesService.instance.toggle(id),
-        isFavorite: (id) => FavoritesService.instance.isFavorite(id),
+      body: Column(
+        children: [
+          Expanded(
+            child: _MixGrid(
+              presetThemes: preset,
+              onlineThemes: online,
+              statusFor: _statusFor,
+              onPresetTap: controller.isApplying ? null : _handlePresetTap,
+              onOnlineTap: controller.isApplying ? null : _handleOnlineTap,
+              onToggleFavorite: (id) => FavoritesService.instance.toggle(id),
+              isFavorite: (id) => FavoritesService.instance.isFavorite(id),
+            ),
+          ),
+          const Center(child: BannerAdWidget(placement: 'home')),
+        ],
       ),
     );
   }
@@ -223,7 +230,7 @@ class _MixGrid extends StatelessWidget {
           padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
           child: SizedBox(
             height: 120,
-            child: NativeAdCard(),
+            child: NativeAdCard(placement: 'home'),
           ),
         ));
       }
@@ -231,7 +238,6 @@ class _MixGrid extends StatelessWidget {
     }
 
     children.add(const SizedBox(height: AppSpacing.md));
-    children.add(const Center(child: BannerAdWidget()));
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
