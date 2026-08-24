@@ -7,7 +7,6 @@ import '../services/app_strings.dart';
 import '../services/download_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/icon_pack_service.dart';
-import '../services/ad_service.dart';
 import '../services/wallpaper_favorites_service.dart';
 import '../utils/ad_positions.dart';
 import '../theme/app_theme.dart';
@@ -135,27 +134,15 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   }
 
   Future<void> _previewThenApplyFromOnline(OnlineWallpaper wallpaper) async {
+    // Preview screen handles download → watch ad → apply internally
     final target = await WallpaperPreviewScreen.show(
       context,
       wallpaperImageProvider(networkUrl: wallpaper.thumbnailUrl),
       downloadUrl: wallpaper.url,
     );
-    if (target == null || !mounted) return;
-
-    final localPath = WallpaperPreviewScreen.lastDownloadedPath;
-    if (localPath == null) {
-      _showResult(false);
-      return;
-    }
-
-    AdService.instance.showRewarded(placement: 'wallpaper_apply', onComplete: () async {
-      try {
-        final ok = await NativeBridgeService.instance.setWallpaper(localPath, target: target);
-        _showResult(ok);
-      } catch (_) {
-        _showResult(false);
-      }
-    });
+    if (!mounted) return;
+    // target non-null means applied successfully
+    _showResult(target != null);
   }
 
   @override

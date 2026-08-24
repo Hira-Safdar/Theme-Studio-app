@@ -99,6 +99,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
   final Map<String, String> _customIconPaths = {};
   final Set<String> _adWatchedPackages = {};
   final Map<String, Uint8List> _oldIconBytes = {};
+  final Set<String> _existingShortcuts = {};
 
   final String _autoShape = autoShapeOptions.first;
   final String _autoStyle = autoStyleOptions.first;
@@ -171,9 +172,20 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
 
     _loadExistingCustomIcons();
     _loadOldIcons();
+    _loadExistingShortcuts();
     if (_isAutoTab) _loadAutoPreviews();
     if (_isOnlinePackTab) _bulkDownloadOnlineIcons();
     if (!_isAutoTab && !_isCustomTab && !_isOnlinePackTab) _refreshSelection();
+  }
+
+  /// Check karta hai kaun se shortcuts pehle se home screen par pinned hain.
+  Future<void> _loadExistingShortcuts() async {
+    final existing = await NativeBridgeService.instance.getExistingShortcuts();
+    if (!mounted) return;
+    setState(() {
+      _existingShortcuts.clear();
+      _existingShortcuts.addAll(existing);
+    });
   }
 
   /// Har app ka asal launcher icon native side se fetch karta hai.
@@ -270,10 +282,26 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     _refreshSelection();
   }
 
+  int _onlineIconsLoaded = 0;
+  int _onlineIconsTotal = 0;
+
   Future<void> _bulkDownloadOnlineIcons() async {
     if (_onlinePack == null) return;
-    setState(() => _loadingOnlineIcons = true);
     final entries = _onlinePack!.iconUrls.entries.toList();
+    // Pehle se cached icons count karo
+    int alreadyCached = 0;
+    for (final e in entries) {
+      if (_onlineIconCache.containsKey(e.key)) alreadyCached++;
+    }
+    if (mounted) {
+      setState(() {
+        _loadingOnlineIcons = true;
+        _onlineIconsLoaded = alreadyCached;
+        _onlineIconsTotal = entries.length;
+      });
+    }
+
+    // Parallel mein sab download karo — har icon ke baad progress update
     await Future.wait(entries.map((e) async {
       if (_onlineIconCache.containsKey(e.key)) return;
       try {
@@ -283,6 +311,9 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
           final file = File('${dir.path}/online_icon_${_onlinePack!.id}_${e.key}.png');
           await file.writeAsBytes(response.bodyBytes);
           _onlineIconCache[e.key] = file.path;
+          if (mounted) {
+            setState(() => _onlineIconsLoaded++);
+          }
         }
       } catch (_) {}
     }));
@@ -387,6 +418,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
       if (!mounted) return;
       setState(() {
         _rowStatus[app.packageName] = ok ? IconRowStatus.applied : IconRowStatus.failed;
+        if (ok) _existingShortcuts.add(app.packageName);
       });
 
       if (ok) {
@@ -403,6 +435,26 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
       setState(() => _rowStatus[app.packageName] = IconRowStatus.failed);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Couldn\'t apply ${app.label} — tap to retry')),
+      );
+    }
+  }
+
+  /// Home screen se shortcut remove karta hai.
+  Future<void> _removeIcon(AppEntry app) async {
+    final ok = await NativeBridgeService.instance.removeShortcut(app.packageName);
+    if (!mounted) return;
+    if (ok) {
+      setState(() {
+        _existingShortcuts.remove(app.packageName);
+        _rowStatus.remove(app.packageName);
+        _adWatchedPackages.remove(app.packageName);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${app.label} shortcut removed')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Couldn\'t remove ${app.label} shortcut')),
       );
     }
   }
@@ -495,12 +547,15 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
                     height: 14,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
+                      value: _onlineIconsTotal > 0
+                          ? _onlineIconsLoaded / _onlineIconsTotal
+                          : null,
                       valueColor: AlwaysStoppedAnimation(AppTheme.accentPrimary(context)),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
-                  const Text(
-                    'Downloading icons...',
+                  Text(
+                    'Loading icons... $_onlineIconsLoaded/$_onlineIconsTotal',
                     style: AppTypography.bodySecondary,
                   ),
                 ],
@@ -568,6 +623,9 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
                                     : () => _applyIcon(app),
                                 isOnlinePack: _isOnlinePackTab,
                                 adWatched: _isOnlinePackTab && _adWatchedPackages.contains(app.packageName),
+                                isAlreadyAdded: _existingShortcuts.contains(app.packageName),
+                                onRemove: () => _removeIcon(app),
+                                available: _appHasIcon(app),
                               );
                             },
                           ),

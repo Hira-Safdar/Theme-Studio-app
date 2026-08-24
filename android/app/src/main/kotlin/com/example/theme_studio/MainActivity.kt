@@ -502,6 +502,37 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
+                // ─── Icon shortcut management ──────────────────────────────
+                // Returns list of packageNames that already have
+                // theme_studio_<packageName> shortcuts pinned on home screen.
+                "getExistingShortcuts" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val sm = getSystemService(ShortcutManager::class.java)
+                        val existing = sm?.pinnedShortcuts
+                            ?.filter { it.id.startsWith("theme_studio_") }
+                            ?.map { it.id.removePrefix("theme_studio_") }
+                            ?: emptyList()
+                        result.success(existing)
+                    } else {
+                        result.success(emptyList<String>())
+                    }
+                }
+
+                // Removes a pinned shortcut for the given packageName.
+                "removeShortcut" -> {
+                    val packageName = call.argument<String>("packageName")
+                    if (packageName == null) {
+                        result.success(false)
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val sm = getSystemService(ShortcutManager::class.java)
+                        val shortcutId = "theme_studio_$packageName"
+                        val removed = sm?.removeDynamicShortcuts(listOf(shortcutId))
+                        result.success(removed != null)
+                    } else {
+                        result.success(false)
+                    }
+                }
+
                 else -> result.notImplemented()
             }
         }

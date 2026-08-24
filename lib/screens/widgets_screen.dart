@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../widgets/pack_selector.dart';
 import '../widgets/widget_preview_card.dart' show WidgetPinStatus;
 import '../services/app_strings.dart';
+import '../services/ad_service.dart';
 import '../services/native_bridge_service.dart';
 import '../widgets/banner_ad_widget.dart';
 import 'notes_editor_screen.dart';
@@ -53,6 +54,7 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
   double _widgetBgOpacity = 0.85;
   double _widgetCornerRadius = 12.0;
   bool _customizationLoaded = false;
+  bool _customizationUnlocked = false;
 
   static const List<Color> _textColorPresets = [
     Colors.white,
@@ -352,137 +354,49 @@ class _WidgetsScreenState extends State<WidgetsScreen> with WidgetsBindingObserv
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // Widget customization controls -- font size, text color,
-          // background opacity, corner radius. These params are persisted
-          // via SharedPreferences and passed to native side on pin/update.
-          if (_customizationLoaded) ...[
-            _LabeledControl(
-              label: tr('widget_font_size'),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Slider(
-                      value: _widgetFontSize,
-                      min: 12,
-                      max: 32,
-                      divisions: 20,
-                      label: _widgetFontSize.round().toString(),
-                      onChanged: (v) {
-                        setState(() => _widgetFontSize = v);
-                        _saveCustomization();
-                      },
-                    ),
-                  ),
-                  SizedBox(
-                    width: 36,
-                    child: Text(
-                      '${_widgetFontSize.round()}',
-                      style: AppTypography.bodySecondary,
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ],
-              ),
+          // ── Customization Drawer ──────────────────────────────────
+          if (_customizationLoaded)
+            _CustomizationDrawer(
+              unlocked: _customizationUnlocked,
+              fontSize: _widgetFontSize,
+              textColor: _widgetTextColor,
+              bgOpacity: _widgetBgOpacity,
+              cornerRadius: _widgetCornerRadius,
+              textColorPresets: _textColorPresets,
+              onUnlock: () {
+                AdService.instance.showRewarded(
+                  placement: 'widgets',
+                  onComplete: () {
+                    if (mounted) setState(() => _customizationUnlocked = true);
+                  },
+                );
+              },
+              onFontSizeChanged: (v) {
+                setState(() => _widgetFontSize = v);
+                _saveCustomization();
+              },
+              onTextColorChanged: (c) {
+                setState(() => _widgetTextColor = c);
+                _saveCustomization();
+              },
+              onBgOpacityChanged: (v) {
+                setState(() => _widgetBgOpacity = v);
+                _saveCustomization();
+              },
+              onCornerRadiusChanged: (v) {
+                setState(() => _widgetCornerRadius = v);
+                _saveCustomization();
+              },
+              onClear: () {
+                setState(() {
+                  _widgetFontSize = 16.0;
+                  _widgetTextColor = Colors.white;
+                  _widgetBgOpacity = 0.85;
+                  _widgetCornerRadius = 12.0;
+                });
+                _saveCustomization();
+              },
             ),
-            const SizedBox(height: AppSpacing.sm),
-            _LabeledControl(
-              label: tr('widget_text_color'),
-              child: Row(
-                children: _textColorPresets.map((color) {
-                  final isSelected = color.toARGB32() == _widgetTextColor.toARGB32();
-                  return Padding(
-                    padding: const EdgeInsets.only(right: AppSpacing.sm),
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() => _widgetTextColor = color);
-                        _saveCustomization();
-                      },
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSelected ? AppTheme.textPrimary(context) : AppTheme.surfaceRaised(context),
-                            width: 2,
-                          ),
-                        ),
-                        child: isSelected
-                            ? Icon(
-                                Icons.check,
-                                size: 14,
-                                color: color.toARGB32() == Colors.white.toARGB32()
-                                    ? Colors.black87
-                                    : Colors.white,
-                              )
-                            : null,
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            _LabeledControl(
-              label: tr('widget_bg_opacity'),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Slider(
-                      value: _widgetBgOpacity,
-                      min: 0,
-                      max: 1,
-                      divisions: 20,
-                      label: '${(_widgetBgOpacity * 100).round()}%',
-                      onChanged: (v) {
-                        setState(() => _widgetBgOpacity = v);
-                        _saveCustomization();
-                      },
-                    ),
-                  ),
-                  SizedBox(
-                    width: 40,
-                    child: Text(
-                      '${(_widgetBgOpacity * 100).round()}%',
-                      style: AppTypography.bodySecondary,
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            _LabeledControl(
-              label: tr('widget_corner_radius'),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Slider(
-                      value: _widgetCornerRadius,
-                      min: 0,
-                      max: 24,
-                      divisions: 12,
-                      label: _widgetCornerRadius.round().toString(),
-                      onChanged: (v) {
-                        setState(() => _widgetCornerRadius = v);
-                        _saveCustomization();
-                      },
-                    ),
-                  ),
-                  SizedBox(
-                    width: 36,
-                    child: Text(
-                      '${_widgetCornerRadius.round()}',
-                      style: AppTypography.bodySecondary,
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-          ],
 
           // 2-column grid of compact cards — same info as before (preview +
           // name + pin action), just far less vertical scroll than five
@@ -641,6 +555,269 @@ String _pad(int n) => n.toString().padLeft(2, '0');
 
 const _weekdayNames = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 String _dayName(DateTime d) => _weekdayNames[d.weekday - 1];
+
+/// Expandable "Customization" drawer — locked state pe "Watch Ad" badge
+/// dikhata hai, unlocked hone pe sliders + color presets expand ho jaate hain.
+class _CustomizationDrawer extends StatelessWidget {
+  const _CustomizationDrawer({
+    required this.unlocked,
+    required this.fontSize,
+    required this.textColor,
+    required this.bgOpacity,
+    required this.cornerRadius,
+    required this.textColorPresets,
+    required this.onUnlock,
+    required this.onFontSizeChanged,
+    required this.onTextColorChanged,
+    required this.onBgOpacityChanged,
+    required this.onCornerRadiusChanged,
+    required this.onClear,
+  });
+
+  final bool unlocked;
+  final double fontSize;
+  final Color textColor;
+  final double bgOpacity;
+  final double cornerRadius;
+  final List<Color> textColorPresets;
+  final VoidCallback onUnlock;
+  final ValueChanged<double> onFontSizeChanged;
+  final ValueChanged<Color> onTextColorChanged;
+  final ValueChanged<double> onBgOpacityChanged;
+  final ValueChanged<double> onCornerRadiusChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surface(context),
+        borderRadius: AppRadius.mdRadius,
+        border: Border.all(
+          color: unlocked
+              ? AppTheme.accentPrimary(context).withValues(alpha: 0.3)
+              : AppTheme.borderSubtle(context),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header ──────────────────────────────────────────────
+          GestureDetector(
+            onTap: unlocked ? null : onUnlock,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm + 2,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    unlocked ? Icons.tune : Icons.lock_outline,
+                    size: 18,
+                    color: unlocked
+                        ? AppTheme.accentPrimary(context)
+                        : AppTheme.textSecondary(context),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    'Customization',
+                    style: AppTypography.body.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (!unlocked)
+                    GestureDetector(
+                      onTap: onUnlock,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentPrimary(context).withValues(alpha: 0.15),
+                          borderRadius: AppRadius.smRadius,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.play_circle_outline,
+                              size: 14,
+                              color: AppTheme.accentPrimary(context),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Watch Ad',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.accentPrimary(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (unlocked)
+                    GestureDetector(
+                      onTap: onClear,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.error(context).withValues(alpha: 0.12),
+                          borderRadius: AppRadius.smRadius,
+                        ),
+                        child: Text(
+                          'Clear',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.error(context),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          // ── Controls (only when unlocked) ───────────────────────
+          if (unlocked) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Column(
+                children: [
+                  _LabeledControl(
+                    label: tr('widget_font_size'),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Slider(
+                            value: fontSize,
+                            min: 12,
+                            max: 32,
+                            divisions: 20,
+                            label: fontSize.round().toString(),
+                            onChanged: onFontSizeChanged,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 36,
+                          child: Text(
+                            '${fontSize.round()}',
+                            style: AppTypography.bodySecondary,
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  _LabeledControl(
+                    label: tr('widget_text_color'),
+                    child: Row(
+                      children: textColorPresets.map((color) {
+                        final isSelected = color.toARGB32() == textColor.toARGB32();
+                        return Padding(
+                          padding: const EdgeInsets.only(right: AppSpacing.sm),
+                          child: GestureDetector(
+                            onTap: () => onTextColorChanged(color),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? AppTheme.textPrimary(context)
+                                      : AppTheme.surfaceRaised(context),
+                                  width: 2,
+                                ),
+                              ),
+                              child: isSelected
+                                  ? Icon(
+                                      Icons.check,
+                                      size: 14,
+                                      color: color.toARGB32() == Colors.white.toARGB32()
+                                          ? Colors.black87
+                                          : Colors.white,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  _LabeledControl(
+                    label: tr('widget_bg_opacity'),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Slider(
+                            value: bgOpacity,
+                            min: 0,
+                            max: 1,
+                            divisions: 20,
+                            label: '${(bgOpacity * 100).round()}%',
+                            onChanged: onBgOpacityChanged,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 40,
+                          child: Text(
+                            '${(bgOpacity * 100).round()}%',
+                            style: AppTypography.bodySecondary,
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  _LabeledControl(
+                    label: tr('widget_corner_radius'),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Slider(
+                            value: cornerRadius,
+                            min: 0,
+                            max: 24,
+                            divisions: 12,
+                            label: cornerRadius.round().toString(),
+                            onChanged: onCornerRadiusChanged,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 36,
+                          child: Text(
+                            '${cornerRadius.round()}',
+                            style: AppTypography.bodySecondary,
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 /// Small caption + control pairing, used for the Style/Appearance row so
 /// each control is self-explanatory without needing a full section header.

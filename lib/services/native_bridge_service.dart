@@ -96,6 +96,34 @@ class NativeBridgeService {
     }
   }
 
+  /// Returns list of packageNames that already have
+  /// theme_studio_<packageName> shortcuts pinned on home screen.
+  Future<List<String>> getExistingShortcuts() async {
+    if (!Platform.isAndroid) return [];
+    try {
+      final result = await _channel.invokeMethod<List<Object?>>('getExistingShortcuts');
+      if (result == null) return [];
+      return result.whereType<String>().toList();
+    } catch (e) {
+      debugPrint('getExistingShortcuts failed: $e');
+      return [];
+    }
+  }
+
+  /// Removes a pinned shortcut for the given packageName.
+  Future<bool> removeShortcut(String packageName) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('removeShortcut', {
+        'packageName': packageName,
+      });
+      return result ?? false;
+    } catch (e) {
+      debugPrint('removeShortcut failed for $packageName: $e');
+      return false;
+    }
+  }
+
   /// Batch mein sab icons silently add karta hai — bina kisi permission
   /// dialog ke. requestPinShortcut har icon ke liye ek dialog dikhata hai,
   /// lekin addDynamicShortcuts sab ko ek saath silent tareeqe se add karta

@@ -1,9 +1,3 @@
-// lib/widgets/icon_list_row.dart
-//
-// Icon list row — 44×44 icon slot, name + package (secondary), gallery-pick
-// icon-button, Apply button. States: default, custom-picked (pencil badge),
-// applying, applied, failed (row tints error, label becomes "retry"). §2.
-
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -11,7 +5,7 @@ import '../theme/app_theme.dart';
 
 enum IconRowStatus { idle, applying, applied, failed }
 
-class IconListRow extends StatelessWidget {
+class IconListRow extends StatefulWidget {
   const IconListRow({
     super.key,
     required this.label,
@@ -28,6 +22,9 @@ class IconListRow extends StatelessWidget {
     required this.onApply,
     this.isOnlinePack = false,
     this.adWatched = false,
+    this.isAlreadyAdded = false,
+    this.onRemove,
+    this.available = true,
   });
 
   final String label;
@@ -44,12 +41,60 @@ class IconListRow extends StatelessWidget {
   final VoidCallback onApply;
   final bool isOnlinePack;
   final bool adWatched;
+  final bool isAlreadyAdded;
+  final VoidCallback? onRemove;
+  final bool available;
+
+  @override
+  State<IconListRow> createState() => _IconListRowState();
+}
+
+class _IconListRowState extends State<IconListRow> with SingleTickerProviderStateMixin {
+  AnimationController? _highlightController;
+  Animation<double>? _highlightAnim;
+  bool _wasApplied = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.status == IconRowStatus.applied) _wasApplied = true;
+  }
+
+  @override
+  void didUpdateWidget(covariant IconListRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Jab apply ho jaye — highlight animation chalao
+    if (widget.status == IconRowStatus.applied && !_wasApplied) {
+      _wasApplied = true;
+      _startHighlight();
+    }
+    // Remove ho jaye toh flag reset karo
+    if (widget.status == IconRowStatus.idle) _wasApplied = false;
+  }
+
+  void _startHighlight() {
+    _highlightController?.dispose();
+    _highlightController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _highlightAnim = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _highlightController!, curve: Curves.easeOut),
+    );
+    _highlightController!.forward();
+  }
+
+  @override
+  void dispose() {
+    _highlightController?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isFailed = status == IconRowStatus.failed;
+    final isFailed = widget.status == IconRowStatus.failed;
 
-    return Container(
+    Widget row = Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
@@ -65,47 +110,127 @@ class IconListRow extends StatelessWidget {
       child: Row(
         children: [
           Checkbox(
-            value: isSelected,
-            onChanged: onToggleSelected,
+            value: widget.isSelected,
+            onChanged: widget.onToggleSelected,
             activeColor: AppTheme.accentPrimary(context),
           ),
           _IconTransitionGroup(
-            oldIconBytes: oldIconBytes,
-            newIconPath: previewPath,
-            newIconIsFile: previewIsFile,
-            hasCustomIcon: hasCustomIcon,
+            oldIconBytes: widget.oldIconBytes,
+            newIconPath: widget.previewPath,
+            newIconIsFile: widget.previewIsFile,
+            hasCustomIcon: widget.hasCustomIcon,
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: AppTypography.body),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(widget.label, style: AppTypography.body),
+                    ),
+                    if (widget.isAlreadyAdded) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.success(context).withValues(alpha: 0.15),
+                          borderRadius: AppRadius.smRadius,
+                        ),
+                        child: Text(
+                          'Added',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.success(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: 2),
-                Text(packageName, style: AppTypography.bodySecondary),
+                Text(widget.packageName, style: AppTypography.bodySecondary),
               ],
             ),
           ),
-          // Bundled packs (Cartoon/Flat colors/Dark mode) fixed/curated hain
-          // -- edit sirf "Custom" tab par allowed hai, isliye ye button
-          // sirf tab dikhta hai jab canEditIcon true ho.
-          if (canEditIcon)
+          if (widget.canEditIcon)
             IconButton(
               icon: const Icon(Icons.photo_library_outlined),
-              tooltip: 'Pick custom icon for $label',
+              tooltip: 'Pick custom icon for ${widget.label}',
               color: AppTheme.textSecondary(context),
-              onPressed: status == IconRowStatus.applying ? null : onPickCustomIcon,
+              onPressed: widget.status == IconRowStatus.applying ? null : widget.onPickCustomIcon,
             ),
-          _ApplyButton(status: status, onPressed: onApply, isOnlinePack: isOnlinePack, adWatched: adWatched),
+          // Agar already added hai toh Remove button,
+          // warna icon available nahi toh disabled N/A,
+          // warna Apply/Watch Ad button
+          if (widget.isAlreadyAdded)
+            _RemoveButton(
+              onPressed: widget.onRemove,
+              applying: widget.status == IconRowStatus.applying,
+            )
+          else if (!widget.available)
+            _DisabledButton()
+          else
+            _ApplyButton(
+              status: widget.status,
+              onPressed: widget.onApply,
+              isOnlinePack: widget.isOnlinePack,
+              adWatched: widget.adWatched,
+            ),
         ],
+      ),
+    );
+
+    // Highlight animation — apply ke baad green glow fade out
+    if (_highlightController != null && _highlightAnim != null) {
+      row = AnimatedBuilder(
+        animation: _highlightAnim!,
+        builder: (context, child) {
+          return Container(
+            decoration: BoxDecoration(
+              borderRadius: AppRadius.mdRadius,
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.success(context).withValues(alpha: _highlightAnim!.value * 0.4),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: child,
+          );
+        },
+        child: row,
+      );
+    }
+
+    return row;
+  }
+}
+
+/// Remove button — outlined style, red tint on hover
+class _RemoveButton extends StatelessWidget {
+  const _RemoveButton({required this.onPressed, this.applying = false});
+  final VoidCallback? onPressed;
+  final bool applying;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: applying ? null : onPressed,
+      icon: const Icon(Icons.remove_circle_outline, size: 16),
+      label: const Text('Remove'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppTheme.error(context),
+        side: BorderSide(color: AppTheme.error(context).withValues(alpha: 0.4)),
       ),
     );
   }
 }
 
-/// "Before -> after" preview group: asal device icon (Kotlin se fetch kiya
-/// hua), phir arrow, phir naya icon-pack/custom preview -- reference design
-/// (Themie-style icon changer) ke row layout se match karne ke liye.
+/// "Before -> after" preview group
 class _IconTransitionGroup extends StatelessWidget {
   const _IconTransitionGroup({
     required this.oldIconBytes,
@@ -194,6 +319,22 @@ class _IconTransitionGroup extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Disabled button for apps without pack icon support
+class _DisabledButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+      child: Text(
+        'N/A',
+        style: AppTypography.bodySecondary.copyWith(
+          color: AppTheme.textSecondary(context).withValues(alpha: 0.5),
+        ),
+      ),
     );
   }
 }
