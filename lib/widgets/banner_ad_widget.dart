@@ -5,7 +5,8 @@ import '../services/ads_analytics_service.dart';
 import '../theme/app_theme.dart';
 
 /// Reusable banner ad widget — pool se instant ad milta hai,
-/// nahi toh fresh load hota hai. Loading mein placeholder dikhata hai.
+/// nahi toh fresh load hota hai. Loading mein placeholder, failure mein
+/// terminal state (no infinite spinner).
 class BannerAdWidget extends StatefulWidget {
   const BannerAdWidget({super.key, required this.placement});
 
@@ -18,6 +19,7 @@ class BannerAdWidget extends StatefulWidget {
 class _BannerAdWidgetState extends State<BannerAdWidget> {
   BannerAd? _ad;
   bool _loaded = false;
+  bool _failed = false;
 
   @override
   void initState() {
@@ -43,7 +45,11 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (ad) {
-          if (mounted) setState(() => _loaded = true);
+          if (!mounted) {
+            ad.dispose();
+            return;
+          }
+          setState(() => _loaded = true);
           AdsAnalyticsService.instance.logImpression(adType: 'banner', placement: widget.placement);
         },
         onAdClicked: (ad) {
@@ -52,7 +58,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
         onAdFailedToLoad: (ad, error) {
           debugPrint('BannerAdWidget: load error ${error.message}');
           ad.dispose();
-          if (mounted) setState(() => _ad = null);
+          if (mounted) setState(() { _ad = null; _failed = true; });
         },
       ),
     );
@@ -68,6 +74,9 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (_failed) {
+      return const SizedBox.shrink();
+    }
     if (!_loaded || _ad == null) {
       return Container(
         width: AdSize.banner.width.toDouble(),

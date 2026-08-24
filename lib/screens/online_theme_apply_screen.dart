@@ -12,7 +12,6 @@ import '../services/icon_pack_service.dart';
 import '../services/icon_matching_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/theme_controller.dart';
-import '../services/ad_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/ad_positions.dart';
 import '../widgets/native_ad_card.dart';
@@ -113,115 +112,98 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
         context,
         wallpaperImageProvider(networkUrl: _selectedWallpaper!.url),
         downloadUrl: _selectedWallpaper!.url,
+        wallpaperId: _selectedWallpaper!.url,
       );
       if (target == null || !mounted) return;
 
+      // Preview screen ne wallpaper already apply kar diya —
+      // sirf icons apply karo
       final localPath = WallpaperPreviewScreen.lastDownloadedPath;
       if (localPath == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to download wallpaper')),
+          const SnackBar(content: Text('Wallpaper downloaded but path lost — try again')),
         );
         return;
       }
-      AdService.instance.showRewarded(placement: 'online_theme_apply', onComplete: () async {
-        await _applyFromLocal(target, localPath);
-      });
+      await _applyIconsOnly(target);
     } catch (_) {}
   }
 
-  Future<void> _applyFromLocal(String target, String localPath) async {
+  /// Sirf icons apply karta hai — wallpaper already preview screen mein
+  /// apply ho chuka hai.
+  Future<void> _applyIconsOnly(String target) async {
     setState(() => _applying = true);
 
     try {
-      debugPrint('===== _applyFromLocal START: target=$target, wallpaper=$localPath =====');
-      final ok = await NativeBridgeService.instance.setWallpaper(localPath, target: target);
-      debugPrint('ThemeApply: setWallpaper returned $ok');
-
       final installedApps = await NativeBridgeService.instance.getInstalledApps();
-      debugPrint('ThemeApply: ${installedApps.length} installed apps');
       final selectedPack = _packOptions.where((p) => p.id == _selectedIconPack).firstOrNull;
-      debugPrint('ThemeApply: selectedPack id=${selectedPack?.id} isBundled=${selectedPack?.isBundled} online=${selectedPack?.onlinePack?.name}');
       final errors = <String>[];
-      if (!ok) errors.add('Wallpaper could not be applied');
 
       final shortcuts = <({String packageName, String appLabel, String iconFilePath})>[];
 
       if (selectedPack != null && selectedPack.isBundled) {
-        debugPrint('ThemeApply: Using BUNDLED pack path');
         for (final app in installedApps) {
           final iconKey = IconMatchingService.instance.guessIconKey(app.packageName, app.label);
           if (iconKey != null) {
             try {
               final assetPath = IconPackService.instance.bundledAssetPath(selectedPack.id, iconKey);
               final filePath = await IconPackService.instance.assetToFile(assetPath, app.packageName);
-              debugPrint('ThemeApply: [BUNDLED] ${app.label} -> key=$iconKey file=$filePath');
               shortcuts.add((packageName: app.packageName, appLabel: app.label, iconFilePath: filePath));
             } catch (e) {
-              debugPrint('ThemeApply: [BUNDLED] ${app.label} FAILED: $e');
-              errors.add('Icon prepare failed for ${app.label}: $e');
+              errors.add('Icon prepare failed for ${app.label}');
             }
           }
         }
       } else if (selectedPack != null && selectedPack.onlinePack != null) {
         final pack = selectedPack.onlinePack!;
-        debugPrint('ThemeApply: Using ONLINE pack "${pack.name}" (${pack.iconUrls.length} icon URLs)');
-
-        final pending = <Future<void>>[];
         final client = http.Client();
-        final tempDir = await getTemporaryDirectory();
-        const concurrency = 5;
-        var active = 0;
+        try {
+          final tempDir = await getTemporaryDirectory();
+          const concurrency = 5;
+          var active = 0;
+          final pending = <Future<void>>[];
 
-        for (final app in installedApps) {
-          final iconUrl = pack.iconUrls[app.packageName];
-          if (iconUrl != null && iconUrl.isNotEmpty) {
-            while (active >= concurrency) {
-              await pending.removeAt(0);
-              active--;
-            }
-            active++;
-            pending.add(Future(() async {
-              try {
-                final response = await client.get(Uri.parse(iconUrl)).timeout(const Duration(seconds: 8));
-                if (response.statusCode == 200) {
-                  final file = File('${tempDir.path}/online_icon_${app.packageName.hashCode.abs()}.png');
-                  await file.writeAsBytes(response.bodyBytes);
-                  shortcuts.add((packageName: app.packageName, appLabel: app.label, iconFilePath: file.path));
-                  debugPrint('ThemeApply: [ONLINE] ${app.label} (${app.packageName}) OK');
-                } else {
-                  errors.add('Icon download failed for ${app.label}');
-                }
-              } catch (e) {
-                errors.add('Icon download error for ${app.label}: $e');
+          for (final app in installedApps) {
+            final iconUrl = pack.iconUrls[app.packageName];
+            if (iconUrl != null && iconUrl.isNotEmpty) {
+              while (active >= concurrency) {
+                await pending.removeAt(0);
+                active--;
               }
-            }));
+              active++;
+              pending.add(Future(() async {
+                try {
+                  final response = await client.get(Uri.parse(iconUrl)).timeout(const Duration(seconds: 8));
+                  if (response.statusCode == 200) {
+                    final file = File('${tempDir.path}/online_icon_${app.packageName.hashCode.abs()}.png');
+                    await file.writeAsBytes(response.bodyBytes);
+                    shortcuts.add((packageName: app.packageName, appLabel: app.label, iconFilePath: file.path));
+                  } else {
+                    errors.add('Icon download failed for ${app.label}');
+                  }
+                } catch (e) {
+                  errors.add('Icon download error for ${app.label}');
+                }
+              }));
+            }
           }
-        }
 
-        if (pending.isNotEmpty) {
-          await Future.wait(pending);
+          if (pending.isNotEmpty) await Future.wait(pending);
+        } finally {
           client.close();
         }
-        debugPrint('ThemeApply: ${shortcuts.length} online shortcuts prepared from ${installedApps.length} apps');
-      } else {
-        debugPrint('ThemeApply: WARNING - no pack selected! selectedPack=$selectedPack');
       }
 
       _shortcutsTotal = shortcuts.length;
-      debugPrint('ThemeApply: Total shortcuts to pin: ${shortcuts.length}');
       if (mounted) setState(() {});
 
       if (shortcuts.isNotEmpty) {
-        debugPrint('ThemeApply: Calling batchCreateShortcuts with ${shortcuts.length} shortcuts...');
         final added = await NativeBridgeService.instance.batchCreateShortcuts(shortcuts: shortcuts);
         _shortcutsDone = added;
-        debugPrint('ThemeApply: batchCreateShortcuts returned $added/${shortcuts.length}');
         if (added == 0 && shortcuts.isNotEmpty) {
           errors.add('No shortcuts could be created');
         }
         if (mounted) setState(() {});
-      } else {
-        debugPrint('ThemeApply: WARNING - NO shortcuts to pin!');
       }
 
       ThemeController.instance.setActiveTheme('online_${widget.onlineTheme.id}');
@@ -229,7 +211,7 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          duration: const Duration(seconds: 6),
+          duration: const Duration(seconds: 4),
           content: Text(
             errors.isEmpty
                 ? '${widget.onlineTheme.name} theme applied'
@@ -238,7 +220,7 @@ class _OnlineThemeApplyScreenState extends State<OnlineThemeApplyScreen> {
           action: errors.isEmpty
               ? null
               : SnackBarAction(
-                  label: 'View details',
+                  label: 'Details',
                   onPressed: () => _showErrorDetails(errors),
                 ),
         ),

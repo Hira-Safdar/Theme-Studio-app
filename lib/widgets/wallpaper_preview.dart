@@ -24,16 +24,28 @@ class WallpaperPreviewScreen extends StatefulWidget {
     super.key,
     required this.image,
     this.downloadUrl,
+    this.wallpaperId,
   });
   final ImageProvider image;
   final String? downloadUrl;
+  final String? wallpaperId;
 
   static String? lastDownloadedPath;
+  static String? lastAppliedId;
 
-  static Future<String?> show(BuildContext context, ImageProvider image, {String? downloadUrl}) {
+  static Future<String?> show(
+    BuildContext context,
+    ImageProvider image, {
+    String? downloadUrl,
+    String? wallpaperId,
+  }) {
     return Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => WallpaperPreviewScreen(image: image, downloadUrl: downloadUrl),
+        builder: (_) => WallpaperPreviewScreen(
+          image: image,
+          downloadUrl: downloadUrl,
+          wallpaperId: wallpaperId,
+        ),
       ),
     );
   }
@@ -44,18 +56,17 @@ class WallpaperPreviewScreen extends StatefulWidget {
 
 class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
   String _target = 'both';
-  bool _downloading = false;
-  bool _downloaded = false;
+  bool _applying = false;
+  bool _applied = false;
+  bool _applyFailed = false;
   double _progress = 0;
   String? _localPath;
   String? _error;
 
-  // Ad + apply states (online wallpapers ke liye)
-  bool _applying = false;
-  bool _applied = false;
-  bool _applyFailed = false;
-
   bool get _isOnline => widget.downloadUrl != null;
+  bool get _isAlreadyApplied =>
+      widget.wallpaperId != null &&
+      widget.wallpaperId == WallpaperPreviewScreen.lastAppliedId;
 
   @override
   void initState() {
@@ -63,88 +74,93 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
     if (!_isOnline) WallpaperPreviewScreen.lastDownloadedPath = null;
   }
 
-  Future<void> _download() async {
-    if (_downloading || _downloaded) return;
-    setState(() {
-      _downloading = true;
-      _progress = 0;
-      _error = null;
-    });
-
-    try {
-      final path = await DownloadService.instance.download(
-        widget.downloadUrl!,
-        onProgress: (p) {
-          if (mounted) setState(() => _progress = p);
-        },
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _downloading = false;
-        if (path != null) {
-          _downloaded = true;
-          _localPath = path;
-          WallpaperPreviewScreen.lastDownloadedPath = path;
-        } else {
-          _error = 'Download failed. Tap to retry.';
-        }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _downloading = false;
-        _error = 'Download failed. Tap to retry.';
-      });
-    }
-  }
-
-  /// Online wallpaper ke liye — Watch Ad → apply
   Future<void> _watchAdAndApply() async {
     if (_applying || _applied) return;
     setState(() {
       _applying = true;
       _applyFailed = false;
+      _progress = 0;
+      _error = null;
+    });
+
+    // Download in background
+    final downloadFuture = DownloadService.instance
+        .download(
+          widget.downloadUrl!,
+          onProgress: (p) {
+            if (mounted) setState(() => _progress = p);
+          },
+        )
+        .catchError((_) => null);
+
+    bool rewardEarned = false;
+    String? downloadedPath;
+
+    void tryApply() async {
+      if (!rewardEarned || downloadedPath == null) return;
+      final path = downloadedPath!;
+      try {
+        final ok = await NativeBridgeService.instance.setWallpaper(
+          path,
+          target: _target,
+        );
+        if (mounted) {
+          setState(() {
+            _applying = false;
+            _applied = ok;
+            _applyFailed = !ok;
+          });
+          if (ok) {
+            WallpaperPreviewScreen.lastAppliedId = widget.wallpaperId;
+            Future.delayed(const Duration(seconds: 1), () {
+              if (mounted) Navigator.of(context).pop(_target);
+            });
+          }
+        }
+      } catch (_) {
+        if (mounted) setState(() { _applying = false; _applyFailed = true; });
+      }
+    }
+
+    downloadFuture.then((path) {
+      downloadedPath = path;
+      if (path == null) {
+        if (mounted) {
+          setState(() {
+            _applying = false;
+            _applyFailed = true;
+            _error = 'Download failed. Tap to retry.';
+          });
+        }
+        return;
+      }
+      tryApply();
     });
 
     AdService.instance.showRewarded(
       placement: 'wallpaper_apply',
-      onComplete: () async {
-        try {
-          final path = _localPath ?? WallpaperPreviewScreen.lastDownloadedPath;
-          if (path == null) {
-            if (mounted) setState(() { _applying = false; _applyFailed = true; });
-            return;
-          }
-          final ok = await NativeBridgeService.instance.setWallpaper(path, target: _target);
-          if (mounted) {
-            setState(() {
-              _applying = false;
-              _applied = ok;
-              _applyFailed = !ok;
-            });
-            // Apply successful — 1 sec dikhao phir pop karo
-            if (ok) {
-              Future.delayed(const Duration(seconds: 1), () {
-                if (mounted) Navigator.of(context).pop(_target);
-              });
-            }
-          }
-        } catch (_) {
-          if (mounted) setState(() { _applying = false; _applyFailed = true; });
-        }
+      onComplete: () {
+        rewardEarned = true;
+        tryApply();
+      },
+      onUnavailable: () {
+        // Free pass — reward granted without ad
+        rewardEarned = true;
+        tryApply();
+      },
+      onDismissed: () {
+        if (mounted) setState(() { _applying = false; });
       },
     );
   }
 
-  /// Local wallpaper ke liye — sirf target return karo
   void _applyLocal() {
     Navigator.of(context).pop(_target);
   }
 
   @override
   Widget build(BuildContext context) {
-    final previewImage = _downloaded && _localPath != null
+    final previewImage = _localPath != null
         ? FileImage(File(_localPath!))
         : widget.image;
 
@@ -164,10 +180,12 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
             Expanded(
               child: _PhoneFrame(image: previewImage, target: _target),
             ),
-            if (_downloading) _buildProgressSection(),
-            if (_error != null && !_downloading) _buildErrorSection(),
+            if (_applying && _isOnline) _buildProgressSection(),
+            if (_error != null && !_applying) _buildErrorSection(),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.screenPadding,
+              ),
               child: PackSelector(
                 options: _wallpaperTargets,
                 selected: _target,
@@ -179,84 +197,129 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
             ),
             Padding(
               padding: const EdgeInsets.all(AppSpacing.screenPadding),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: (_downloading || _applying) ? null : () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  // ── Online wallpaper: Download → Watch Ad → Applied ──
-                  if (_isOnline && !_downloaded)
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _downloading ? null : _download,
-                        icon: _downloading
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  value: _progress > 0 ? _progress : null,
-                                  valueColor: const AlwaysStoppedAnimation(Colors.white),
-                                ),
-                              )
-                            : const Icon(Icons.download),
-                        label: Text(_downloading ? '${(_progress * 100).toInt()}%' : 'Download'),
-                      ),
-                    ),
-                  if (_isOnline && _downloaded && !_applied)
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _applying ? null : _watchAdAndApply,
-                        icon: _applying
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation(Colors.white),
-                                ),
-                              )
-                            : const Icon(Icons.play_circle_outline),
-                        label: Text(_applying ? 'Applying...' : 'Watch Ad'),
-                      ),
-                    ),
-                  if (_isOnline && _applied)
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: null,
-                        icon: const Icon(Icons.check_circle),
-                        label: const Text('Applied'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.green,
-                        ),
-                      ),
-                    ),
-                  if (_isOnline && _downloaded && _applyFailed)
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _watchAdAndApply,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
-                      ),
-                    ),
-                  // ── Local wallpaper: simple Apply ──
-                  if (!_isOnline)
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _applyLocal,
-                        child: const Text('Apply'),
-                      ),
-                    ),
-                ],
-              ),
+              child: _buildActionRow(),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildActionRow() {
+    // Already applied (from previous session)
+    if (_isAlreadyApplied && !_applied) {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.check_circle),
+              label: const Text('Applied'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.green,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Just applied successfully
+    if (_applied) {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.check_circle),
+              label: const Text('Applied'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.green,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Apply failed — Retry
+    if (_applyFailed) {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _applying ? null : () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _watchAdAndApply,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Downloading + Ad in progress
+    if (_applying) {
+      return const Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: null,
+              child: Text('Cancel'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Default — Cancel + action button
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        // Online: Watch Ad & Download
+        if (_isOnline)
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _watchAdAndApply,
+              icon: const Icon(Icons.play_circle_outline),
+              label: const Text('Watch Ad & Download'),
+            ),
+          ),
+        // Local: simple Apply
+        if (!_isOnline)
+          Expanded(
+            child: FilledButton(
+              onPressed: _applyLocal,
+              child: const Text('Apply'),
+            ),
+          ),
+      ],
     );
   }
 
@@ -281,7 +344,9 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            'Downloading... ${(_progress * 100).toInt()}%',
+            _progress > 0
+                ? 'Downloading... ${(_progress * 100).toInt()}%'
+                : 'Starting download...',
             style: AppTypography.bodySecondary,
           ),
         ],
@@ -291,7 +356,7 @@ class _WallpaperPreviewScreenState extends State<WallpaperPreviewScreen> {
 
   Widget _buildErrorSection() {
     return GestureDetector(
-      onTap: _download,
+      onTap: _watchAdAndApply,
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.screenPadding,
@@ -320,7 +385,10 @@ class _PhoneFrame extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(32),
-            border: Border.all(color: AppTheme.borderFocus(context), width: 6),
+            border: Border.all(
+              color: AppTheme.borderFocus(context),
+              width: 6,
+            ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(
@@ -351,11 +419,19 @@ class _PhoneFrame extends StatelessWidget {
                         ),
                         Row(
                           children: [
-                            Icon(Icons.signal_cellular_alt, color: Colors.white, size: 14),
+                            Icon(
+                              Icons.signal_cellular_alt,
+                              color: Colors.white,
+                              size: 14,
+                            ),
                             SizedBox(width: 4),
                             Icon(Icons.wifi, color: Colors.white, size: 14),
                             SizedBox(width: 4),
-                            Icon(Icons.battery_full, color: Colors.white, size: 14),
+                            Icon(
+                              Icons.battery_full,
+                              color: Colors.white,
+                              size: 14,
+                            ),
                           ],
                         ),
                       ],
@@ -432,7 +508,13 @@ class _LabelChip extends StatelessWidget {
         color: AppTheme.surfaceRaised(context),
         borderRadius: AppRadius.mdRadius,
       ),
-      child: Text(label, style: TextStyle(fontSize: 11, color: AppTheme.textSecondary(context))),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          color: AppTheme.textSecondary(context),
+        ),
+      ),
     );
   }
 }
@@ -529,7 +611,11 @@ class _HomeContent extends StatelessWidget {
   }
 }
 
-ImageProvider wallpaperImageProvider({String? assetPath, String? filePath, String? networkUrl}) {
+ImageProvider wallpaperImageProvider({
+  String? assetPath,
+  String? filePath,
+  String? networkUrl,
+}) {
   if (networkUrl != null) return NetworkImage(networkUrl);
   if (filePath != null) return FileImage(File(filePath));
   return AssetImage(assetPath!);

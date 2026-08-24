@@ -111,6 +111,9 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
 
   final Set<String> _selectedPackages = {};
 
+  // Preloaded icon keys for all bundled packs (so switching tabs is instant)
+  bool _preloadedPacks = false;
+
   bool get _isCustomTab => activeCategory == customCategoryId;
   bool get _isAutoTab => activeCategory == autoCategoryId;
 
@@ -173,8 +176,22 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
     _loadExistingCustomIcons();
     _loadOldIcons();
     _loadExistingShortcuts();
-    if (_isAutoTab) _loadAutoPreviews();
+    _preloadAllBundledPacks();
+    // Sab tabs ke liye preload — tab switch instant ho
+    _loadAutoPreviews();
     if (_isOnlinePackTab) _bulkDownloadOnlineIcons();
+    if (!_isAutoTab && !_isCustomTab && !_isOnlinePackTab) _refreshSelection();
+  }
+
+  /// Saare bundled packs ke icon keys preload karo — jab user tab switch
+  /// kare toh turant dikhe, loading na ho.
+  Future<void> _preloadAllBundledPacks() async {
+    if (_preloadedPacks) return;
+    _preloadedPacks = true;
+
+    // Icon keys pehle se load ho chuke hain (_loadInstalledApps mein).
+    // Sirf selection refresh karo taake sab tabs ready hon.
+    if (mounted) setState(() {});
     if (!_isAutoTab && !_isCustomTab && !_isOnlinePackTab) _refreshSelection();
   }
 
@@ -416,6 +433,7 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
       );
 
       if (!mounted) return;
+      final wasOverride = _existingShortcuts.contains(app.packageName);
       setState(() {
         _rowStatus[app.packageName] = ok ? IconRowStatus.applied : IconRowStatus.failed;
         if (ok) _existingShortcuts.add(app.packageName);
@@ -423,7 +441,18 @@ class _IconChangerScreenState extends State<IconChangerScreen> {
 
       if (ok) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Shortcut request sent for ${app.label}')),
+          SnackBar(
+            content: Text(wasOverride
+                ? '${app.label} icon updated on home screen'
+                : 'Shortcut request sent for ${app.label}'),
+            action: SnackBarAction(
+              label: 'Go to Home',
+              onPressed: () {
+                // Home screen par le jao taake change dikhe
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+            ),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

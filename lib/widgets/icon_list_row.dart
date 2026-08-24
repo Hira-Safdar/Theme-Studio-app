@@ -49,7 +49,8 @@ class IconListRow extends StatefulWidget {
   State<IconListRow> createState() => _IconListRowState();
 }
 
-class _IconListRowState extends State<IconListRow> with SingleTickerProviderStateMixin {
+class _IconListRowState extends State<IconListRow>
+    with SingleTickerProviderStateMixin {
   AnimationController? _highlightController;
   Animation<double>? _highlightAnim;
   bool _wasApplied = false;
@@ -63,12 +64,10 @@ class _IconListRowState extends State<IconListRow> with SingleTickerProviderStat
   @override
   void didUpdateWidget(covariant IconListRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Jab apply ho jaye — highlight animation chalao
     if (widget.status == IconRowStatus.applied && !_wasApplied) {
       _wasApplied = true;
       _startHighlight();
     }
-    // Remove ho jaye toh flag reset karo
     if (widget.status == IconRowStatus.idle) _wasApplied = false;
   }
 
@@ -125,31 +124,7 @@ class _IconListRowState extends State<IconListRow> with SingleTickerProviderStat
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(widget.label, style: AppTypography.body),
-                    ),
-                    if (widget.isAlreadyAdded) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.success(context).withValues(alpha: 0.15),
-                          borderRadius: AppRadius.smRadius,
-                        ),
-                        child: Text(
-                          'Added',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.success(context),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                Text(widget.label, style: AppTypography.body),
                 const SizedBox(height: 2),
                 Text(widget.packageName, style: AppTypography.bodySecondary),
               ],
@@ -160,30 +135,65 @@ class _IconListRowState extends State<IconListRow> with SingleTickerProviderStat
               icon: const Icon(Icons.photo_library_outlined),
               tooltip: 'Pick custom icon for ${widget.label}',
               color: AppTheme.textSecondary(context),
-              onPressed: widget.status == IconRowStatus.applying ? null : widget.onPickCustomIcon,
+              onPressed: widget.status == IconRowStatus.applying
+                  ? null
+                  : widget.onPickCustomIcon,
             ),
-          // Agar already added hai toh Remove button,
-          // warna icon available nahi toh disabled N/A,
-          // warna Apply/Watch Ad button
-          if (widget.isAlreadyAdded)
-            _RemoveButton(
-              onPressed: widget.onRemove,
-              applying: widget.status == IconRowStatus.applying,
-            )
-          else if (!widget.available)
-            _DisabledButton()
-          else
-            _ApplyButton(
-              status: widget.status,
-              onPressed: widget.onApply,
-              isOnlinePack: widget.isOnlinePack,
-              adWatched: widget.adWatched,
-            ),
+          // Right side: Added badge + action button (centered column)
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.isAlreadyAdded)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success(context).withValues(alpha: 0.15),
+                    borderRadius: AppRadius.smRadius,
+                  ),
+                  child: Text(
+                    'Added',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.success(context),
+                    ),
+                  ),
+                ),
+              if (widget.isAlreadyAdded) const SizedBox(height: 4),
+              if (widget.isAlreadyAdded && widget.available)
+                // Override: shortcut exists + icon available → Apply button
+                _ApplyButton(
+                  status: widget.status,
+                  onPressed: widget.onApply,
+                  isOnlinePack: widget.isOnlinePack,
+                  adWatched: widget.adWatched,
+                  isOverride: true,
+                )
+              else if (widget.isAlreadyAdded)
+                // Shortcut exists but no icon in this pack → Remove only
+                _RemoveButton(
+                  onPressed: widget.onRemove,
+                  applying: widget.status == IconRowStatus.applying,
+                )
+              else if (!widget.available)
+                _DisabledButton()
+              else
+                _ApplyButton(
+                  status: widget.status,
+                  onPressed: widget.onApply,
+                  isOnlinePack: widget.isOnlinePack,
+                  adWatched: widget.adWatched,
+                ),
+            ],
+          ),
         ],
       ),
     );
 
-    // Highlight animation — apply ke baad green glow fade out
+    // Highlight animation
     if (_highlightController != null && _highlightAnim != null) {
       row = AnimatedBuilder(
         animation: _highlightAnim!,
@@ -193,7 +203,8 @@ class _IconListRowState extends State<IconListRow> with SingleTickerProviderStat
               borderRadius: AppRadius.mdRadius,
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.success(context).withValues(alpha: _highlightAnim!.value * 0.4),
+                  color: AppTheme.success(context)
+                      .withValues(alpha: _highlightAnim!.value * 0.4),
                   blurRadius: 12,
                   spreadRadius: 2,
                 ),
@@ -210,7 +221,6 @@ class _IconListRowState extends State<IconListRow> with SingleTickerProviderStat
   }
 }
 
-/// Remove button — outlined style, red tint on hover
 class _RemoveButton extends StatelessWidget {
   const _RemoveButton({required this.onPressed, this.applying = false});
   final VoidCallback? onPressed;
@@ -224,13 +234,14 @@ class _RemoveButton extends StatelessWidget {
       label: const Text('Remove'),
       style: OutlinedButton.styleFrom(
         foregroundColor: AppTheme.error(context),
-        side: BorderSide(color: AppTheme.error(context).withValues(alpha: 0.4)),
+        side: BorderSide(
+          color: AppTheme.error(context).withValues(alpha: 0.4),
+        ),
       ),
     );
   }
 }
 
-/// "Before -> after" preview group
 class _IconTransitionGroup extends StatelessWidget {
   const _IconTransitionGroup({
     required this.oldIconBytes,
@@ -279,15 +290,15 @@ class _IconTransitionGroup extends StatelessWidget {
   }
 
   Widget _iconBox(BuildContext context, Widget child) => Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceRaised(context),
-          borderRadius: AppRadius.mdRadius,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: child,
-      );
+    width: 40,
+    height: 40,
+    decoration: BoxDecoration(
+      color: AppTheme.surfaceRaised(context),
+      borderRadius: AppRadius.mdRadius,
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: child,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -299,7 +310,11 @@ class _IconTransitionGroup extends StatelessWidget {
           children: [
             _iconBox(context, _oldIconWidget(context)),
             const SizedBox(width: 4),
-            Icon(Icons.arrow_forward, size: 16, color: AppTheme.textSecondary(context)),
+            Icon(
+              Icons.arrow_forward,
+              size: 16,
+              color: AppTheme.textSecondary(context),
+            ),
             const SizedBox(width: 4),
             _iconBox(context, _newIconWidget(context)),
           ],
@@ -315,7 +330,11 @@ class _IconTransitionGroup extends StatelessWidget {
                 color: AppTheme.accentPrimary(context),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.edit, size: 10, color: Color(0xFF00201E)),
+              child: const Icon(
+                Icons.edit,
+                size: 10,
+                color: Color(0xFF00201E),
+              ),
             ),
           ),
       ],
@@ -323,7 +342,6 @@ class _IconTransitionGroup extends StatelessWidget {
   }
 }
 
-/// Disabled button for apps without pack icon support
 class _DisabledButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -340,11 +358,18 @@ class _DisabledButton extends StatelessWidget {
 }
 
 class _ApplyButton extends StatelessWidget {
-  const _ApplyButton({required this.status, required this.onPressed, this.isOnlinePack = false, this.adWatched = false});
+  const _ApplyButton({
+    required this.status,
+    required this.onPressed,
+    this.isOnlinePack = false,
+    this.adWatched = false,
+    this.isOverride = false,
+  });
   final IconRowStatus status;
   final VoidCallback onPressed;
   final bool isOnlinePack;
   final bool adWatched;
+  final bool isOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -356,7 +381,9 @@ class _ApplyButton extends StatelessWidget {
           height: 18,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation(AppTheme.accentPrimary(context)),
+            valueColor: AlwaysStoppedAnimation(
+              AppTheme.accentPrimary(context),
+            ),
           ),
         ),
       );
@@ -372,17 +399,21 @@ class _ApplyButton extends StatelessWidget {
     final isFailed = status == IconRowStatus.failed;
     final label = isFailed
         ? 'Retry'
-        : isOnlinePack && !adWatched
-            ? 'Watch Ad'
-            : 'Apply';
+        : isOverride
+            ? 'Update'
+            : isOnlinePack && !adWatched
+                ? 'Watch Ad'
+                : 'Apply';
     return FilledButton.icon(
       onPressed: onPressed,
       icon: Icon(
         isFailed
             ? Icons.refresh
-            : isOnlinePack && !adWatched
-                ? Icons.play_circle_outline
-                : Icons.check,
+            : isOverride
+                ? Icons.swap_horiz
+                : isOnlinePack && !adWatched
+                    ? Icons.play_circle_outline
+                    : Icons.check,
         size: 16,
       ),
       label: Text(label),
@@ -393,7 +424,8 @@ class _ApplyButton extends StatelessWidget {
             )
           : isOnlinePack && !adWatched
               ? FilledButton.styleFrom(
-                  backgroundColor: AppTheme.accentPrimary(context).withValues(alpha: 0.15),
+                  backgroundColor: AppTheme.accentPrimary(context)
+                      .withValues(alpha: 0.15),
                   foregroundColor: AppTheme.accentPrimary(context),
                 )
               : null,

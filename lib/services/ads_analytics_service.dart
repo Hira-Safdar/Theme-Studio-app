@@ -73,4 +73,20 @@ class AdsAnalyticsService {
       debugPrint('AdsAnalytics: rewarded log failed: $e');
     }
   }
+
+  // ── Rewarded free pass (ad not ready) ──────────────────────────────
+  Future<void> logRewardedFreePass({
+    required String placement,
+  }) async {
+    if (!_enabled) return;
+    try {
+      await _db.collection('rewarded_free_pass').add({
+        'placement': placement,
+        'platform': _platform,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('AdsAnalytics: rewarded free pass log failed: $e');
+    }
+  }
 }

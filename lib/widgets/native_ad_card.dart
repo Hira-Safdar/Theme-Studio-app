@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 
 /// Native ad jo content cards jaisa dikhta hai — "Sponsored" badge ke
 /// saath. Pool se instant ad milta hai, nahi toh fresh load hota hai.
+/// Failure pe terminal state — no infinite spinner.
 class NativeAdCard extends StatefulWidget {
   const NativeAdCard({super.key, this.aspectRatio = 2 / 3, required this.placement});
 
@@ -19,6 +20,7 @@ class NativeAdCard extends StatefulWidget {
 class _NativeAdCardState extends State<NativeAdCard> {
   NativeAd? _ad;
   bool _loaded = false;
+  bool _failed = false;
 
   @override
   void initState() {
@@ -43,12 +45,12 @@ class _NativeAdCardState extends State<NativeAdCard> {
       request: const AdRequest(),
       listener: NativeAdListener(
         onAdLoaded: (ad) {
-          if (mounted) {
-            setState(() => _loaded = true);
-            AdsAnalyticsService.instance.logImpression(adType: 'native', placement: widget.placement);
-          } else {
+          if (!mounted) {
             ad.dispose();
+            return;
           }
+          setState(() => _loaded = true);
+          AdsAnalyticsService.instance.logImpression(adType: 'native', placement: widget.placement);
         },
         onAdClicked: (ad) {
           AdsAnalyticsService.instance.logClick(adType: 'native', placement: widget.placement);
@@ -56,7 +58,7 @@ class _NativeAdCardState extends State<NativeAdCard> {
         onAdFailedToLoad: (ad, error) {
           debugPrint('NativeAdCard: failed: ${error.message}');
           ad.dispose();
-          if (mounted) setState(() => _ad = null);
+          if (mounted) setState(() { _ad = null; _failed = true; });
         },
       ),
       nativeTemplateStyle: NativeTemplateStyle(
@@ -75,6 +77,9 @@ class _NativeAdCardState extends State<NativeAdCard> {
 
   @override
   Widget build(BuildContext context) {
+    if (_failed) {
+      return const SizedBox.shrink();
+    }
     if (!_loaded || _ad == null) {
       return Container(
         height: 120,
